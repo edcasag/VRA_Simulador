@@ -25,30 +25,9 @@ ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 TRACTOR_IMG_PATH = ASSETS_DIR / "trator.jpg"
 
 HEADER_H = 36
-HEADER_TITLE = "Dissertação de Mestrado — Edson Casagrande"
-
-INTRO_SLIDES: list[dict[str, object]] = [
-    {
-        "title": "Aplicação em Taxa Variável (VRA)",
-        "lines": [
-            "4 zonas (A, B, C, D) de 1 ha, doses 90/75/60/100 kg/ha.",
-            "Esquerda: mapa esperado. Direita: aplicação simulada.",
-            "Trator de 2 m com distribuidor de discos de 20 m.",
-        ],
-        "duration_s": 7.0,
-    },
-    {
-        "title": "Velocidade modulada pelo relevo",
-        "lines": [
-            "Velocidade nominal 6 km/h, modulada pelo declive Z(x, y).",
-            "Subida até 1,8 km/h; descida até 9 km/h.",
-            "Controlador ajusta a vazão; erro residual ≤ ±5%.",
-        ],
-        "duration_s": 7.0,
-    },
-]
 
 from .coverage_report import CoverageReport
+from .i18n import t
 from .kml_parser import KmlData
 from .terrain import TerrainParams, altitude, contour_lines
 from .tractor_sim import TractorSample
@@ -63,15 +42,6 @@ COLOR_STOPS: list[tuple[float, tuple[int, int, int]]] = [
     (85.0, (240, 90, 60)),      # Vermelho claro
     (90.0, (210, 50, 50)),      # Vermelho médio
     (100.0, (160, 30, 30)),     # Vermelho escuro
-]
-COLOR_NAMES = [
-    "Verde escuro 50",
-    "Verde claro 60",
-    "Amarelo 70",
-    "Laranja 80",
-    "Vermelho claro 85",
-    "Vermelho médio 90",
-    "Vermelho escuro 100",
 ]
 GRAY_BG = (235, 235, 235)
 GRAY_DARK = (110, 110, 110)
@@ -204,19 +174,22 @@ def _draw_contours(
         pygame.draw.line(surf, (90, 90, 90), p1, p2, 1)
 
 
-def _draw_legend(surf: pygame.Surface, font: pygame.font.Font, x: int, y: int) -> None:
+def _draw_legend(
+    surf: pygame.Surface, font: pygame.font.Font, x: int, y: int, lang: str
+) -> None:
     box_w = 230
     line_h = 22
     box_h = line_h * (len(COLOR_STOPS) + 1) + 12
     pygame.draw.rect(surf, (255, 255, 255), (x, y, box_w, box_h))
     pygame.draw.rect(surf, (50, 50, 50), (x, y, box_w, box_h), 1)
-    title = font.render("Taxa de aplicação (kg/ha)", True, (0, 0, 0))
+    title = font.render(t(lang, "legend_title"), True, (0, 0, 0))
     surf.blit(title, (x + 8, y + 6))
+    color_names = t(lang, "color_names")
     for i, (rate, color) in enumerate(COLOR_STOPS):
         yy = y + 10 + line_h * (i + 1)
         pygame.draw.rect(surf, color, (x + 8, yy, 22, 16))
         pygame.draw.rect(surf, (50, 50, 50), (x + 8, yy, 22, 16), 1)
-        text = font.render(COLOR_NAMES[i], True, (0, 0, 0))
+        text = font.render(color_names[i], True, (0, 0, 0))
         surf.blit(text, (x + 36, yy))
 
 
@@ -249,6 +222,7 @@ def _draw_intro_slide(
     idx: int,
     total: int,
     elapsed: float,
+    lang: str,
 ) -> None:
     """Painel central com um slide da introdução (título + corpo + footer com progresso)."""
     title_str = str(slide["title"])
@@ -257,7 +231,7 @@ def _draw_intro_slide(
 
     title_surf = title_font.render(title_str, True, (0, 0, 0))
     body_surfs = [body_font.render(ln, True, (0, 0, 0)) for ln in body_lines]
-    footer_str = f"Slide {idx + 1} / {total}   —   ESPAÇO para iniciar"
+    footer_str = t(lang, "slide_footer").format(idx=idx + 1, total=total)
     footer_surf = footer_font.render(footer_str, True, (60, 60, 60))
 
     line_h = body_font.get_linesize() + 4
@@ -296,10 +270,11 @@ def _draw_intro_slide(
     screen.blit(panel, (panel_x, panel_y))
 
 
-def _draw_ready_banner(screen: pygame.Surface, big_font: pygame.font.Font) -> None:
+def _draw_ready_banner(
+    screen: pygame.Surface, big_font: pygame.font.Font, lang: str
+) -> None:
     """Banner final indicando que o usuário pode iniciar."""
-    msg = "Pronto — pressione ESPAÇO para iniciar a simulação"
-    text = big_font.render(msg, True, (0, 0, 0))
+    text = big_font.render(t(lang, "ready_banner"), True, (0, 0, 0))
     tw, th = text.get_size()
     panel_w = tw + 80
     panel_h = th + 40
@@ -315,10 +290,11 @@ def _draw_report_panel(
     mono_font: pygame.font.Font,
     big_font: pygame.font.Font,
     report_lines: list[str],
+    lang: str,
 ) -> None:
     """Painel central com o relatório de aplicação por zona ao final da simulação."""
-    title_str = "Relatório de aplicação por zona — Tab. 6 cap 7 §7.3"
-    footer_str = "Pressione qualquer tecla para fechar"
+    title_str = t(lang, "report_title")
+    footer_str = t(lang, "report_footer")
     line_h = 22
     title = big_font.render(title_str, True, (0, 0, 0))
     footer = big_font.render(footer_str, True, (60, 60, 60))
@@ -357,7 +333,7 @@ def run(
     mode_label: str,
     width_m: float = 3.0,
     cell_m: float = 1.0,
-    title: str = "Dissertação de Mestrado — Edson Casagrande",
+    title: str | None = None,
     docs_dir: str | Path = "docs",
     snapshots_at_pct: tuple[int, ...] = (25, 50, 100),
     snapshot_prefix: str = "snapshot",
@@ -365,10 +341,11 @@ def run(
     max_fps: int = 60,
     paint_offset_back_m: float = 1.0,
     start_paused: bool = False,
+    lang: str = "pt",
 ) -> CoverageReport:
     """Executa a visualização. Devolve o CoverageReport ao terminar."""
     pygame.init()
-    pygame.display.set_caption(title)
+    pygame.display.set_caption(title or t(lang, "header_title"))
     screen = pygame.display.set_mode((1280, 720))
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Segoe UI", 14)
@@ -395,7 +372,7 @@ def run(
     _draw_zones_filled(static_left, kml, vp_left)
     _draw_zone_outlines(static_left, kml, vp_left)
     _draw_zone_labels(static_left, kml, vp_left, big_font)
-    _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12)
+    _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, lang)
 
     # Painel direito (fundo dinâmico): cinza-claro + contornos das zonas (esqueleto)
     static_right = pygame.Surface((640, 720))
@@ -413,7 +390,7 @@ def run(
     static_header = pygame.Surface((1280, HEADER_H))
     static_header.fill((245, 245, 245))
     pygame.draw.line(static_header, (50, 50, 50), (0, HEADER_H - 1), (1280, HEADER_H - 1), 1)
-    header_text = big_font.render(HEADER_TITLE, True, (0, 0, 0))
+    header_text = big_font.render(t(lang, "header_title"), True, (0, 0, 0))
     static_header.blit(
         header_text,
         ((1280 - header_text.get_width()) // 2, (HEADER_H - header_text.get_height()) // 2),
@@ -431,7 +408,7 @@ def run(
         except (pygame.error, OSError, ImportError):
             tractor_img = None
 
-    report = CoverageReport(kml, width_m=width_m)
+    report = CoverageReport(kml, width_m=width_m, lang=lang)
     docs_dir = Path(docs_dir)
     docs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -495,7 +472,7 @@ def run(
     report_lines: list[str] | None = None
 
     # Estado da introdução (slides exibidos enquanto pausado, antes da simulação)
-    intro_slides = INTRO_SLIDES if start_paused else []
+    intro_slides = t(lang, "intro_slides") if start_paused else []
     intro_idx = 0
     intro_slide_start_ms = pygame.time.get_ticks() if intro_slides else 0
 
@@ -571,12 +548,12 @@ def run(
             else:
                 v_str = "—"
             info = {
-                "Pos (m)": f"({last_sample.x:.1f}, {last_sample.y:.1f})",
-                "Altitude": f"{z:+.2f} m",
-                "Velocidade": v_str,
-                "Dose alvo": f"{d:.0f} kg/ha",
-                "Cobertura": f"{100 * idx / total:.0f} %",
-                "Tempo sim.": f"{sim_time:.0f} s",
+                t(lang, "hud_pos"): f"({last_sample.x:.1f}, {last_sample.y:.1f})",
+                t(lang, "hud_altitude"): f"{z:+.2f} m",
+                t(lang, "hud_speed"): v_str,
+                t(lang, "hud_dose"): f"{d:.0f} kg/ha",
+                t(lang, "hud_coverage"): f"{100 * idx / total:.0f} %",
+                t(lang, "hud_time"): f"{sim_time:.0f} s",
             }
             # HUD ancorado em cima da zona B (NE do mapa, painel esquerdo)
             hud_anchor = pygame.Rect(330, 40, 0, 0)
@@ -606,17 +583,18 @@ def run(
                         intro_idx,
                         len(intro_slides),
                         elapsed_s,
+                        lang,
                     )
                 else:
-                    _draw_ready_banner(screen, slide_title_font)
+                    _draw_ready_banner(screen, slide_title_font, lang)
             else:
-                _draw_ready_banner(screen, slide_title_font)
+                _draw_ready_banner(screen, slide_title_font, lang)
 
         # Painel central de relatório quando a simulação termina
         if finished:
             if report_lines is None:
                 report_lines = report.render_console().split("\n")
-            _draw_report_panel(screen, mono_font, big_font, report_lines)
+            _draw_report_panel(screen, mono_font, big_font, report_lines, lang)
 
         pygame.display.flip()
 

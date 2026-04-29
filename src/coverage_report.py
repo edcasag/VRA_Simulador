@@ -14,6 +14,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from .i18n import t
 from .kml_parser import KmlData, Polygon
 from .vra_engine import point_in_polygon
 
@@ -48,11 +49,13 @@ class CoverageReport:
         noise_std: float = 0.025,
         noise_clip: float = 0.05,
         seed: int = 42,
+        lang: str = "pt",
     ) -> None:
         self.zones: list[Polygon] = [z for z in kml.zones if z.rate > 0]
         self.width_m = width_m
         self.noise_std = noise_std
         self.noise_clip = noise_clip
+        self.lang = lang
         self.rng = random.Random(seed)
         self.acc: dict[str, ZoneAccumulator] = {
             z.label: ZoneAccumulator(
@@ -117,10 +120,14 @@ class CoverageReport:
         return out
 
     def render_console(self) -> str:
-        lines = [
-            "Zona | Alvo (kg/ha) | Aplicado (kg/ha) | Erro % | Cobertura %",
-            "-----|--------------|------------------|--------|-------------",
-        ]
+        h_zone = t(self.lang, "tbl_zone")
+        h_target = t(self.lang, "tbl_target")
+        h_applied = t(self.lang, "tbl_applied")
+        h_error = t(self.lang, "tbl_error")
+        h_cov = t(self.lang, "tbl_coverage")
+        header = f"{h_zone:<5}| {h_target:^12} | {h_applied:^16} | {h_error:^6} | {h_cov:^11}"
+        sep = "-" * 5 + "|" + "-" * 14 + "|" + "-" * 18 + "|" + "-" * 8 + "|" + "-" * 13
+        lines = [header, sep]
         for r in self.rows():
             lines.append(
                 f"{r['zona']:<5}| {r['alvo_kg_ha']:>12} | {r['aplicado_kg_ha']:>16} | "
@@ -134,7 +141,16 @@ class CoverageReport:
         rows = self.rows()
         if not rows:
             return
+        header_map = {
+            "zona": t(self.lang, "tbl_zone"),
+            "alvo_kg_ha": t(self.lang, "tbl_target"),
+            "aplicado_kg_ha": t(self.lang, "tbl_applied"),
+            "erro_pct": t(self.lang, "tbl_error"),
+            "area_ha": t(self.lang, "tbl_area"),
+            "cobertura_pct": t(self.lang, "tbl_coverage"),
+        }
+        translated_rows = [{header_map[k]: v for k, v in r.items()} for r in rows]
         with path.open("w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+            writer = csv.DictWriter(f, fieldnames=list(translated_rows[0].keys()))
             writer.writeheader()
-            writer.writerows(rows)
+            writer.writerows(translated_rows)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .i18n import t
 from .kml_parser import parse_kml
 from .terrain import GaussianBump, default_params
 from .tractor_sim import boustrophedon
@@ -17,58 +18,130 @@ from .visualization import run
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Simulador VRA — Tese de Mestrado POLI/USP")
-    p.add_argument("kml", type=Path, help="Caminho para o arquivo .kml")
-    p.add_argument(
-        "--width-m",
-        type=float,
-        default=20.0,
-        help="Largura da faixa de aplicação (m). Ex.: distribuidor 10 m de cada lado → 20",
+    p = argparse.ArgumentParser(
+        prog="python -m _python.src.main",
+        description=(
+            "VRA Simulator: visualizes the variable-rate application of a tractor "
+            "moving across a field split into zones with distinct target rates. "
+            "Reads zones from a KML file, simulates the boustrophedon trajectory, "
+            "modulates speed by terrain slope, and produces a per-zone error "
+            "report (CSV)."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  # Run directly with Portuguese UI, snapshots in docs/\n"
+            "  python -m _python.src.main _python/data/ensaio_abcd.kml\n"
+            "\n"
+            "  # Presentation mode: paused at start, intro slides explaining\n"
+            "  # VRA and speed modulation; SPACE starts the simulation.\n"
+            "  # Use this to record screen video with the pygame window in focus.\n"
+            "  python -m _python.src.main _python/data/ensaio_abcd.kml --paused-start\n"
+            "\n"
+            "  # English UI, separate output dir for the CEA paper\n"
+            "  python -m _python.src.main _python/data/ensaio_abcd.kml --lang en \\\n"
+            "      --docs-dir _python/docs/en\n"
+            "\n"
+            "Keys during simulation:\n"
+            "  SPACE  pause / resume (also advances intro slides in --paused-start)\n"
+            "  S      save a manual snapshot of the current window\n"
+            "  ESC    close\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        "--cell-m",
-        type=float,
-        default=1.5,
-        help="Profundidade longitudinal do retângulo de pintura por amostra (m). "
-        "Maior que 1.0 garante leve sobreposição entre retângulos consecutivos.",
+        "kml",
+        type=Path,
+        help="Path to the .kml file describing the field zones "
+        "(e.g. _python/data/ensaio_abcd.kml).",
     )
     p.add_argument(
-        "--paint-offset-back-m",
-        type=float,
-        default=1.0,
-        help="Deslocamento da pintura para trás do trator (m), correspondente ao "
-        "eixo do distribuidor de discos (default: 1.0 = ~metade do trator).",
+        "--lang",
+        choices=["pt", "en"],
+        default="pt",
+        help="Language for the on-screen UI, the in-window report panel and the "
+        "CSV column headers. pt = Portuguese (default, used by the dissertation); "
+        "en = English (used by the CEA paper).",
     )
     p.add_argument(
-        "--gnss-noise-m",
-        type=float,
-        default=0.0,
-        help="Desvio-padrão do ruído GNSS (m). 0 = sem ruído, 0.5 = realismo de campo "
-        "(mas pode introduzir falhas visuais na pintura).",
-    )
-    p.add_argument("--decline-x", type=float, default=0.04, help="Declive em x (m/m)")
-    p.add_argument("--decline-y", type=float, default=0.0, help="Declive em y (m/m)")
-    p.add_argument("--bump-h", type=float, default=2.0, help="Altura da bossa central (m)")
-    p.add_argument(
-        "--docs-dir", type=Path, default=Path("docs"), help="Diretório para snapshots e CSV"
+        "--paused-start",
+        action="store_true",
+        help="Start in presentation mode: paused, showing intro slides about VRA "
+        "and speed modulation, waiting for SPACE to begin. Useful to start a "
+        "screen recording with the pygame window already focused. Without this "
+        "flag the simulation starts immediately.",
     )
     p.add_argument(
         "--speed-factor",
         type=float,
         default=0.3,
-        help="Fator de aceleração da simulação (0.2=bem lento, 1=médio, 3=rápido)",
+        help="Simulation speed multiplier. 0.2 = very slow (didactic); 1 = medium; "
+        "3 = fast (generates the report in a few seconds). Default: 0.3.",
+    )
+    p.add_argument(
+        "--docs-dir",
+        type=Path,
+        default=Path("docs"),
+        help="Directory where automatic PNG snapshots (at 25%%, 50%%, 100%% of the "
+        "trajectory) and the per-zone error CSV are saved. Default: docs/",
     )
     p.add_argument(
         "--snapshot-prefix",
         type=str,
         default="snapshot",
-        help="Prefixo para snapshots automáticos",
+        help="Filename prefix for automatic snapshots "
+        "(e.g. 'snapshot_050pct.png'). Default: snapshot.",
     )
     p.add_argument(
-        "--paused-start",
-        action="store_true",
-        help="Inicia pausado; pressione ESPAÇO para começar (útil para iniciar a "
-        "gravação de tela com a janela do pygame em foco antes da animação rodar).",
+        "--width-m",
+        type=float,
+        default=20.0,
+        help="Application swath width (m). E.g. a disc spreader with 10 m reach on "
+        "each side -> 20. Default: 20.0.",
+    )
+    p.add_argument(
+        "--cell-m",
+        type=float,
+        default=1.5,
+        help="Longitudinal depth (in the direction of motion) of the painted "
+        "rectangle drawn at each sample (m). Values >1.0 ensure slight overlap "
+        "between consecutive rectangles, avoiding visible stripes. Default: 1.5.",
+    )
+    p.add_argument(
+        "--paint-offset-back-m",
+        type=float,
+        default=1.0,
+        help="Distance the paint is drawn behind the tractor (m), matching the "
+        "disc spreader axis. Default: 1.0 (~half the tractor length).",
+    )
+    p.add_argument(
+        "--gnss-noise-m",
+        type=float,
+        default=0.0,
+        help="Standard deviation of Gaussian noise applied to reported GNSS "
+        "coordinates (m). 0 = no noise (clean animation); 0.5 = field realism, "
+        "but may introduce small visual gaps in the paint. Default: 0.0.",
+    )
+    p.add_argument(
+        "--decline-x",
+        type=float,
+        default=0.04,
+        help="Uniform terrain slope along x, in m/m (4%% by default). Modulates "
+        "tractor speed: uphill slows down, downhill speeds up.",
+    )
+    p.add_argument(
+        "--decline-y",
+        type=float,
+        default=0.0,
+        help="Uniform terrain slope along y, in m/m. Default: 0 "
+        "(flat in this direction).",
+    )
+    p.add_argument(
+        "--bump-h",
+        type=float,
+        default=2.0,
+        help="Height (m) of the central Gaussian bump added on top of the uniform "
+        "slope. Creates visible contour lines in the right panel. 0 disables "
+        "the bump. Default: 2.0.",
     )
     return p.parse_args()
 
@@ -117,14 +190,15 @@ def main() -> None:
         speed_factor=args.speed_factor,
         paint_offset_back_m=args.paint_offset_back_m,
         start_paused=args.paused_start,
+        lang=args.lang,
     )
 
     print()
-    print("=== Relatório de aplicação por zona (Tab. 6 cap 7 §7.3) ===")
+    print(t(args.lang, "report_console_title"))
     print(report.render_console())
     csv_path = args.docs_dir / "relatorio_erro.csv"
     report.write_csv(csv_path)
-    print(f"\nRelatório salvo em: {csv_path}")
+    print(f"\n{t(args.lang, 'report_saved')}: {csv_path}")
 
 
 if __name__ == "__main__":
