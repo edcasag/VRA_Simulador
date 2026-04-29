@@ -14,7 +14,7 @@ from .coverage_report import polygon_area_m2
 from .i18n import t
 from .kml_parser import KmlData, parse_kml
 from .terrain import GaussianBump, default_params
-from .tractor_sim import boustrophedon
+from .tractor_sim import boustrophedon, should_use_headland
 from .visualization import run
 
 
@@ -70,6 +70,16 @@ def parse_args() -> argparse.Namespace:
         "and speed modulation, waiting for SPACE to begin. Useful to start a "
         "screen recording with the pygame window already focused. Without this "
         "flag the simulation starts immediately.",
+    )
+    p.add_argument(
+        "--headland",
+        choices=["auto", "on", "off"],
+        default="auto",
+        help="Headland (perimeter) pass before the boustrophedon. The tractor "
+        "first traces the field perimeter and the polygon exclusions (Sede etc.), "
+        "then fills the interior. Improves coverage of irregular boundaries. "
+        "auto = on when the field polygon has >= 5 vertices (irregular shape); "
+        "off otherwise. on / off force the behavior.",
     )
     p.add_argument(
         "--speed-factor",
@@ -208,6 +218,11 @@ def main() -> None:
     exclusion_polys = [z.coords_xy for z in kml.zones if z.rate == 0]
     exclusion_circs = [(c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0]
 
+    if args.headland == "auto":
+        headland = should_use_headland(field_coords)
+    else:
+        headland = args.headland == "on"
+
     samples = boustrophedon(
         bbox,
         terrain,
@@ -217,6 +232,7 @@ def main() -> None:
         field_polygon=field_coords,
         exclusion_polygons=exclusion_polys,
         exclusion_circles=exclusion_circs,
+        headland=headland,
     )
 
     report = run(
@@ -238,6 +254,7 @@ def main() -> None:
     print()
     print(t(args.lang, "report_console_title"))
     print(report.render_console())
+    print(f"\n{t(args.lang, 'report_note')}")
     csv_path = args.docs_dir / "relatorio_erro.csv"
     report.write_csv(csv_path)
     print(f"\n{t(args.lang, 'report_saved')}: {csv_path}")

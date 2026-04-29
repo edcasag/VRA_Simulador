@@ -14,8 +14,12 @@ STRINGS: dict[str, dict[str, Any]] = {
         "legend_title": "Taxa de aplicação (kg/ha)",
         "ready_banner": "Pronto — pressione ESPAÇO para iniciar a simulação",
         "slide_footer": "Slide {idx} / {total}   —   ESPAÇO para iniciar",
+        "press_space_for_report": "Pressione ESPAÇO para ver o relatório",
         "report_title": "Relatório de aplicação por zona",
         "report_footer": "Pressione qualquer tecla para fechar",
+        "report_note": (
+            "Resultados aproximados. A operação manual real do trator é mais eficiente."
+        ),
         "report_console_title": "=== Relatório de aplicação por zona ===",
         "report_saved": "Relatório salvo em",
         "hud_pos": "Pos (m)",
@@ -28,6 +32,8 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_target": "Alvo (kg/ha)",
         "tbl_applied": "Aplicado (kg/ha)",
         "tbl_error": "Erro %",
+        "tbl_planned_kg": "Planejado (kg)",
+        "tbl_applied_kg": "Aplicado (kg)",
         "tbl_coverage": "Cobertura %",
         "tbl_area": "Área (ha)",
         "summary_title": "=== Sumário do KML ===",
@@ -66,8 +72,12 @@ STRINGS: dict[str, dict[str, Any]] = {
         "legend_title": "Application rate (kg/ha)",
         "ready_banner": "Ready — press SPACE to start the simulation",
         "slide_footer": "Slide {idx} / {total}   —   SPACE to start",
+        "press_space_for_report": "Press SPACE to see the report",
         "report_title": "Application report by zone",
         "report_footer": "Press any key to close",
+        "report_note": (
+            "Approximate results. Real manual tractor operation is more efficient."
+        ),
         "report_console_title": "=== Application report by zone ===",
         "report_saved": "Report saved to",
         "hud_pos": "Pos (m)",
@@ -80,6 +90,8 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_target": "Target (kg/ha)",
         "tbl_applied": "Applied (kg/ha)",
         "tbl_error": "Error %",
+        "tbl_planned_kg": "Planned (kg)",
+        "tbl_applied_kg": "Applied (kg)",
         "tbl_coverage": "Coverage %",
         "tbl_area": "Area (ha)",
         "summary_title": "=== KML summary ===",

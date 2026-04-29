@@ -79,10 +79,17 @@ def dose_at(x: float, y: float, kml: KmlData, idw_params: IdwParams | None = Non
         if z.rate == 0 and point_in_polygon(x, y, z.coords_xy):
             return 0.0
 
-    # 4: polígonos de inclusão
+    # 4: polígonos de inclusão. Quando há sobreposição (zona específica dentro
+    # de uma zona-fundo), vence a de menor área — a prescrição mais específica.
+    smallest_area: float | None = None
+    smallest_rate: float | None = None
     for z in kml.zones:
         if z.rate > 0 and point_in_polygon(x, y, z.coords_xy):
-            return z.rate
+            if smallest_area is None or z.area_m2 < smallest_area:
+                smallest_area = z.area_m2
+                smallest_rate = z.rate
+    if smallest_rate is not None:
+        return smallest_rate
 
     # 5: IDW por amostras esparsas
     if kml.samples:

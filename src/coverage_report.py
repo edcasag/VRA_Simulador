@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .i18n import t
-from .kml_parser import KmlData, Polygon
+from .kml_parser import KmlData, Polygon, polygon_area_m2  # noqa: F401 (re-export)
 from .vra_engine import point_in_polygon
 
 
@@ -26,19 +26,6 @@ class ZoneAccumulator:
     area_ha: float
     massa_aplicada_kg: float = 0.0
     area_coberta_m2: float = 0.0
-
-
-def polygon_area_m2(coords: list[tuple[float, float]]) -> float:
-    """Área de um polígono fechado em m² (fórmula do shoelace)."""
-    n = len(coords)
-    if n < 3:
-        return 0.0
-    s = 0.0
-    for i in range(n):
-        x1, y1 = coords[i]
-        x2, y2 = coords[(i + 1) % n]
-        s += x1 * y2 - x2 * y1
-    return abs(s) * 0.5
 
 
 class CoverageReport:
@@ -63,15 +50,18 @@ class CoverageReport:
             ZoneAccumulator(
                 label=self._unique_label(i),
                 rate_alvo=z.rate,
-                area_ha=polygon_area_m2(z.coords_xy) / 10_000.0,
+                area_ha=z.area_m2 / 10_000.0,
             )
             for i, z in enumerate(self.zones)
         ]
         self.last_t: float | None = None
 
     def _unique_label(self, idx: int) -> str:
-        """Sufixa o rótulo com a dose se houver outra zona com o mesmo nome."""
+        """Numera zonas sem rótulo (Z1, Z2…) e sufixa o rótulo com a dose se
+        houver outra zona com o mesmo nome (ex.: dois 'Poor' com doses distintas)."""
         z = self.zones[idx]
+        if not z.label:
+            return f"Z{idx + 1}"
         same = [other for other in self.zones if other.label == z.label]
         if len(same) <= 1:
             return z.label
@@ -101,28 +91,37 @@ class CoverageReport:
         acc.area_coberta_m2 += delta_area_m2
 
     def _find_zone_idx(self, x: float, y: float) -> int | None:
+        """Devolve o índice da zona de menor área que contém (x, y) — assim
+        zonas específicas (sub-zonas) prevalecem sobre zonas-fundo na contagem."""
+        smallest_area: float | None = None
+        smallest_idx: int | None = None
         for i, z in enumerate(self.zones):
             if point_in_polygon(x, y, z.coords_xy):
-                return i
-        return None
+                if smallest_area is None or z.area_m2 < smallest_area:
+                    smallest_area = z.area_m2
+                    smallest_idx = i
+        return smallest_idx
 
     def rows(self) -> list[dict[str, float | str]]:
+        """Linha por zona: alvo (kg/ha), área (ha), planejado (kg), aplicado (kg),
+        erro % (massa: gasto efetivo vs planejado) e cobertura %."""
         out: list[dict[str, float | str]] = []
         for acc in self.acc:
-            if acc.area_coberta_m2 < 1e-3:
-                aplicado = 0.0
-            else:
-                aplicado = acc.massa_aplicada_kg / (acc.area_coberta_m2 / 10_000.0)
+            massa_alvo_kg = acc.rate_alvo * acc.area_ha
+            massa_apl_kg = acc.massa_aplicada_kg
             erro_pct = (
-                100.0 * (aplicado - acc.rate_alvo) / acc.rate_alvo if acc.rate_alvo else 0.0
+                100.0 * (massa_apl_kg - massa_alvo_kg) / massa_alvo_kg
+                if massa_alvo_kg
+                else 0.0
             )
             out.append(
                 {
                     "zona": acc.label,
                     "alvo_kg_ha": round(acc.rate_alvo, 2),
-                    "aplicado_kg_ha": round(aplicado, 2),
-                    "erro_pct": round(erro_pct, 2),
                     "area_ha": round(acc.area_ha, 4),
+                    "planejado_kg": round(massa_alvo_kg, 2),
+                    "aplicado_kg": round(massa_apl_kg, 2),
+                    "erro_pct": round(erro_pct, 2),
                     "cobertura_pct": round(
                         100.0 * acc.area_coberta_m2 / max(acc.area_ha * 10_000.0, 1e-9), 1
                     ),
@@ -133,16 +132,38 @@ class CoverageReport:
     def render_console(self) -> str:
         h_zone = t(self.lang, "tbl_zone")
         h_target = t(self.lang, "tbl_target")
-        h_applied = t(self.lang, "tbl_applied")
-        h_error = t(self.lang, "tbl_error")
+        h_area = t(self.lang, "tbl_area")
+        h_plan = t(self.lang, "tbl_planned_kg")
+        h_appl = t(self.lang, "tbl_applied_kg")
+        h_err = t(self.lang, "tbl_error")
         h_cov = t(self.lang, "tbl_coverage")
-        header = f"{h_zone:<5}| {h_target:^12} | {h_applied:^16} | {h_error:^6} | {h_cov:^11}"
-        sep = "-" * 5 + "|" + "-" * 14 + "|" + "-" * 18 + "|" + "-" * 8 + "|" + "-" * 13
+        header = (
+            f"{h_zone:<8}| {h_target:^12} | {h_area:^9} | "
+            f"{h_plan:^14} | {h_appl:^14} | {h_err:^7} | {h_cov:^11}"
+        )
+        sep = (
+            "-" * 8 + "|" + "-" * 14 + "|" + "-" * 11 + "|"
+            + "-" * 16 + "|" + "-" * 16 + "|" + "-" * 9 + "|" + "-" * 13
+        )
         lines = [header, sep]
+        # Totais para a linha-resumo
+        total_plan = 0.0
+        total_appl = 0.0
         for r in self.rows():
             lines.append(
-                f"{r['zona']:<5}| {r['alvo_kg_ha']:>12} | {r['aplicado_kg_ha']:>16} | "
-                f"{r['erro_pct']:>+6} | {r['cobertura_pct']:>11}"
+                f"{r['zona']:<8}| {r['alvo_kg_ha']:>12} | {r['area_ha']:>9} | "
+                f"{r['planejado_kg']:>14} | {r['aplicado_kg']:>14} | "
+                f"{r['erro_pct']:>+7} | {r['cobertura_pct']:>11}"
+            )
+            total_plan += float(r["planejado_kg"])
+            total_appl += float(r["aplicado_kg"])
+        if total_plan > 0:
+            total_err = 100.0 * (total_appl - total_plan) / total_plan
+            lines.append(sep)
+            lines.append(
+                f"{'Total':<8}| {'':>12} | {'':>9} | "
+                f"{total_plan:>14.2f} | {total_appl:>14.2f} | "
+                f"{total_err:>+7.2f} | {'':>11}"
             )
         return "\n".join(lines)
 
@@ -155,9 +176,10 @@ class CoverageReport:
         header_map = {
             "zona": t(self.lang, "tbl_zone"),
             "alvo_kg_ha": t(self.lang, "tbl_target"),
-            "aplicado_kg_ha": t(self.lang, "tbl_applied"),
-            "erro_pct": t(self.lang, "tbl_error"),
             "area_ha": t(self.lang, "tbl_area"),
+            "planejado_kg": t(self.lang, "tbl_planned_kg"),
+            "aplicado_kg": t(self.lang, "tbl_applied_kg"),
+            "erro_pct": t(self.lang, "tbl_error"),
             "cobertura_pct": t(self.lang, "tbl_coverage"),
         }
         translated_rows = [{header_map[k]: v for k, v in r.items()} for r in rows]

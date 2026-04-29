@@ -201,13 +201,16 @@ def _draw_zone_outlines(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> Non
 def _draw_zone_labels(
     surf: pygame.Surface, kml: KmlData, vp: Viewport, font: pygame.font.Font
 ) -> None:
+    inclusion_idx = 0
     for z in kml.zones:
         if z.rate <= 0:
             continue
+        inclusion_idx += 1
+        label = z.label or f"Z{inclusion_idx}"
         cx = sum(p[0] for p in z.coords_xy) / len(z.coords_xy)
         cy = sum(p[1] for p in z.coords_xy) / len(z.coords_xy)
         sx, sy = vp.world_to_screen(cx, cy)
-        text = font.render(f"{z.label} = {int(z.rate)} kg/ha", True, (0, 0, 0))
+        text = font.render(f"{label} = {int(z.rate)} kg/ha", True, (0, 0, 0))
         rect = text.get_rect(center=(sx, sy))
         bg = pygame.Surface((rect.width + 6, rect.height + 4), pygame.SRCALPHA)
         bg.fill((255, 255, 255, 200))
@@ -371,26 +374,50 @@ def _draw_ready_banner(
     screen.blit(panel, ((1280 - panel_w) // 2, (720 - panel_h) // 2))
 
 
+def _draw_press_space_for_report_banner(
+    screen: pygame.Surface, big_font: pygame.font.Font, lang: str
+) -> None:
+    """Banner discreto no rodapé pedindo ESPAÇO para ver o relatório.
+    Posicionado no rodapé para não cobrir o resultado pintado da simulação."""
+    text = big_font.render(t(lang, "press_space_for_report"), True, (0, 0, 0))
+    tw, th = text.get_size()
+    panel_w = tw + 80
+    panel_h = th + 28
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((255, 255, 200, 245))
+    pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 2)
+    panel.blit(text, ((panel_w - tw) // 2, (panel_h - th) // 2))
+    # Rodapé inferior centro (mantém os painéis pintados visíveis)
+    screen.blit(panel, ((1280 - panel_w) // 2, 720 - panel_h - 20))
+
+
 def _draw_report_panel(
     screen: pygame.Surface,
     mono_font: pygame.font.Font,
     big_font: pygame.font.Font,
+    note_font: pygame.font.Font,
     report_lines: list[str],
     lang: str,
 ) -> None:
     """Painel central com o relatório de aplicação por zona ao final da simulação."""
     title_str = t(lang, "report_title")
     footer_str = t(lang, "report_footer")
+    note_str = t(lang, "report_note")
     line_h = 22
     title = big_font.render(title_str, True, (0, 0, 0))
     footer = big_font.render(footer_str, True, (60, 60, 60))
+    note = note_font.render(note_str, True, (10, 10, 10))
     rendered_lines = [mono_font.render(ln, True, (0, 0, 0)) for ln in report_lines]
     body_w = max(ln.get_width() for ln in rendered_lines)
-    panel_w = max(title.get_width(), footer.get_width(), body_w) + 60
+    panel_w = max(
+        title.get_width(), footer.get_width(), note.get_width(), body_w
+    ) + 60
     panel_h = (
         title.get_height()
         + 16
         + len(rendered_lines) * line_h
+        + 12
+        + note.get_height()
         + 16
         + footer.get_height()
         + 40
@@ -404,6 +431,8 @@ def _draw_report_panel(
     body_y = 16 + title.get_height() + 16
     for i, ln_surf in enumerate(rendered_lines):
         panel.blit(ln_surf, (30, body_y + i * line_h))
+    note_y = body_y + len(rendered_lines) * line_h + 12
+    panel.blit(note, ((panel_w - note.get_width()) // 2, note_y))
     panel.blit(
         footer,
         ((panel_w - footer.get_width()) // 2, panel_h - footer.get_height() - 16),
@@ -437,6 +466,8 @@ def run(
     font = pygame.font.SysFont("Segoe UI", 14)
     big_font = pygame.font.SysFont("Segoe UI", 18, bold=True)
     mono_font = pygame.font.SysFont("Consolas,Courier New,monospace", 16)
+    # Nota do relatório (bold para destacar do corpo da tabela)
+    note_font = pygame.font.SysFont("Segoe UI", 16, bold=True)
     # Fontes maiores para os slides de introdução, mais fáceis de ler à distância
     slide_title_font = pygame.font.SysFont("Segoe UI", 32, bold=True)
     slide_body_font = pygame.font.SysFont("Segoe UI", 22, bold=True)
@@ -560,6 +591,7 @@ def run(
     snapshots_done: set[int] = set()
     idx = 0
     report_lines: list[str] | None = None
+    show_report = False  # após finished, pressionar ESPAÇO para abrir o painel
 
     # Estado da introdução (slides exibidos enquanto pausado, antes da simulação).
     # Placeholders nas linhas dos slides são preenchidos com dados do KML atual.
@@ -605,8 +637,16 @@ def run(
                     path = docs_dir / f"{snapshot_prefix}_manual_{pct}pct.png"
                     pygame.image.save(screen, str(path))
                 elif finished:
-                    # Após terminar, qualquer tecla fecha
-                    running = False
+                    if not show_report:
+                        # Primeira tecla após terminar: ESPAÇO abre o relatório,
+                        # qualquer outra fecha.
+                        if event.key == pygame.K_SPACE:
+                            show_report = True
+                        else:
+                            running = False
+                    else:
+                        # Relatório já visível: qualquer tecla fecha.
+                        running = False
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_ESCAPE:
@@ -657,6 +697,13 @@ def run(
         # Cabeçalho fixo (sempre por cima)
         screen.blit(static_header, (0, 0))
 
+        # Snapshots automáticos: salvos ANTES dos banners/painel, para capturar
+        # apenas o resultado pintado (sem cobrir com elementos de UI)
+        for tgt in list(snapshots_done):
+            path = docs_dir / f"{snapshot_prefix}_{tgt:03d}pct.png"
+            if not path.exists():
+                pygame.image.save(screen, str(path))
+
         # Slides introdutórios enquanto pausado, depois banner "Pronto"
         if paused and not finished:
             if intro_slides and intro_idx < len(intro_slides):
@@ -683,19 +730,20 @@ def run(
             else:
                 _draw_ready_banner(screen, slide_title_font, lang)
 
-        # Painel central de relatório quando a simulação termina
+        # Quando a simulação termina, primeiro mostra um banner pedindo ESPAÇO
+        # (deixando o resultado pintado totalmente visível). Depois de
+        # pressionar ESPAÇO, abre o painel central com o relatório.
         if finished:
-            if report_lines is None:
-                report_lines = report.render_console().split("\n")
-            _draw_report_panel(screen, mono_font, big_font, report_lines, lang)
+            if not show_report:
+                _draw_press_space_for_report_banner(screen, big_font, lang)
+            else:
+                if report_lines is None:
+                    report_lines = report.render_console().split("\n")
+                _draw_report_panel(
+                    screen, mono_font, big_font, note_font, report_lines, lang
+                )
 
         pygame.display.flip()
-
-        # Snapshots automáticos
-        for tgt in list(snapshots_done):
-            path = docs_dir / f"{snapshot_prefix}_{tgt:03d}pct.png"
-            if not path.exists():
-                pygame.image.save(screen, str(path))
 
     pygame.quit()
     return report

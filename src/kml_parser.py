@@ -22,7 +22,25 @@ CIRCLE_RE = re.compile(
     r"^\s*([^=]+?)\s*=\s*(-?\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*m?\s*$",
     re.IGNORECASE,
 )
+# Círculo sem label (label opcional): "0:5m", "120:3m" etc.
+RATE_RADIUS_RE = re.compile(
+    r"^\s*(-?\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*m?\s*$",
+    re.IGNORECASE,
+)
 LABEL_RATE_RE = re.compile(r"^\s*([^=]+?)\s*=\s*(-?\d+(?:\.\d+)?)\s*$")
+
+
+def polygon_area_m2(coords: list[tuple[float, float]]) -> float:
+    """Área de um polígono fechado em m² (fórmula do shoelace)."""
+    n = len(coords)
+    if n < 3:
+        return 0.0
+    s = 0.0
+    for i in range(n):
+        x1, y1 = coords[i]
+        x2, y2 = coords[(i + 1) % n]
+        s += x1 * y2 - x2 * y1
+    return abs(s) * 0.5
 
 
 @dataclass
@@ -30,6 +48,7 @@ class Polygon:
     label: str
     rate: float
     coords_xy: list[tuple[float, float]] = field(default_factory=list)
+    area_m2: float = 0.0
 
 
 @dataclass
@@ -53,6 +72,7 @@ class SamplePoint:
 class Field:
     rate: float
     coords_xy: list[tuple[float, float]] = field(default_factory=list)
+    area_m2: float = 0.0
 
 
 @dataclass
@@ -116,6 +136,7 @@ def _classify_name(name: str) -> tuple[str, dict[str, float | str]] | None:
     name = (name or "").strip()
     if not name:
         return None
+    # Círculo com label: "Pedra=0:5m"
     m = CIRCLE_RE.match(name)
     if m:
         return "circle", {
@@ -123,6 +144,15 @@ def _classify_name(name: str) -> tuple[str, dict[str, float | str]] | None:
             "rate": float(m.group(2)),
             "radius_m": float(m.group(3)),
         }
+    # Círculo sem label: "0:5m"
+    m = RATE_RADIUS_RE.match(name)
+    if m:
+        return "circle", {
+            "label": "",
+            "rate": float(m.group(1)),
+            "radius_m": float(m.group(2)),
+        }
+    # Polígono com label: "Good=100", "Field=0", "Sede=0"
     m = LABEL_RATE_RE.match(name)
     if m:
         label = m.group(1).strip()
@@ -130,6 +160,7 @@ def _classify_name(name: str) -> tuple[str, dict[str, float | str]] | None:
         if label.lower() == "field":
             return "field", {"label": label, "rate": rate}
         return "label", {"label": label, "rate": rate}
+    # Polígono ou ponto sem label, só a taxa: "100", "75", "0"
     try:
         return "rate_only", {"label": "", "rate": float(name)}
     except ValueError:
@@ -184,7 +215,9 @@ def parse_kml(path: str | Path) -> KmlData:
         if classified is None:
             if polygon_coords is not None and polygon_coords.text and field_poly is None:
                 coords = _parse_coords(polygon_coords.text, origin_lat, origin_lon)
-                field_poly = Field(rate=0.0, coords_xy=coords)
+                field_poly = Field(
+                    rate=0.0, coords_xy=coords, area_m2=polygon_area_m2(coords)
+                )
             continue
 
         kind, attrs = classified
@@ -192,10 +225,19 @@ def parse_kml(path: str | Path) -> KmlData:
         if polygon_coords is not None and polygon_coords.text:
             coords = _parse_coords(polygon_coords.text, origin_lat, origin_lon)
             if kind == "field":
-                field_poly = Field(rate=float(attrs["rate"]), coords_xy=coords)
+                field_poly = Field(
+                    rate=float(attrs["rate"]),
+                    coords_xy=coords,
+                    area_m2=polygon_area_m2(coords),
+                )
             else:
                 zones.append(
-                    Polygon(label=str(attrs["label"]), rate=float(attrs["rate"]), coords_xy=coords)
+                    Polygon(
+                        label=str(attrs["label"]),
+                        rate=float(attrs["rate"]),
+                        coords_xy=coords,
+                        area_m2=polygon_area_m2(coords),
+                    )
                 )
         elif point_coords is not None and point_coords.text:
             first = _first_coord(point_coords.text)
