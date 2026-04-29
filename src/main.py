@@ -10,8 +10,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .coverage_report import polygon_area_m2
 from .i18n import t
-from .kml_parser import parse_kml
+from .kml_parser import KmlData, parse_kml
 from .terrain import GaussianBump, default_params
 from .tractor_sim import boustrophedon
 from .visualization import run
@@ -146,17 +147,51 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _print_kml_summary(kml: KmlData, lang: str, width_m: float) -> None:
+    """Imprime sumário das features do KML antes de iniciar a simulação."""
+    print(t(lang, "summary_title"))
+    if kml.field_polygon is not None:
+        area_ha = polygon_area_m2(kml.field_polygon.coords_xy) / 10_000.0
+        info = t(lang, "summary_field_fmt").format(
+            vertices=len(kml.field_polygon.coords_xy), area_ha=area_ha
+        )
+        print(f"  {t(lang, 'summary_field')}: {info}")
+    else:
+        print(f"  {t(lang, 'summary_field')}: {t(lang, 'summary_field_none')}")
+
+    inclusions = [z for z in kml.zones if z.rate > 0]
+    exclusions = [z for z in kml.zones if z.rate == 0]
+    inc_desc = ", ".join(f"{z.label}={z.rate:g}" for z in inclusions) or "—"
+    exc_desc = ", ".join(z.label for z in exclusions) or "—"
+    print(f"  {t(lang, 'summary_inclusion')} ({len(inclusions)}): {inc_desc}")
+    print(f"  {t(lang, 'summary_exclusion')} ({len(exclusions)}): {exc_desc}")
+    print(f"  {t(lang, 'summary_circles')}: {len(kml.circles)}")
+    print(f"  {t(lang, 'summary_samples')}: {len(kml.samples)}")
+
+    bbox = kml.bbox()
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+    n_strips = max(1, int(h / max(width_m, 1e-6)))
+    print(
+        f"  {t(lang, 'summary_bbox')}: {w:.0f} x {h:.0f} m  "
+        f"(~{n_strips} {t(lang, 'summary_strips')})"
+    )
+    print()
+
+
 def main() -> None:
     args = parse_args()
     kml = parse_kml(args.kml)
     bbox = kml.bbox()
+
+    _print_kml_summary(kml, args.lang, args.width_m)
 
     terrain = default_params(bbox)
     terrain.a = args.decline_x
     terrain.b = args.decline_y
     # Velocidade nominal típica de trator agrícola distribuidor: 6 km/h ≈ 1.667 m/s.
     # Saturações: 1.8 km/h em subida íngreme; 9 km/h em descida.
-    # alpha=13.3 → 5% de subida derruba ~1.2 km/h; 10% satura em v_min.
+    # alpha=13.3 -> 5% de subida derruba ~1.2 km/h; 10% satura em v_min.
     terrain.v_nom = 6.0 / 3.6
     terrain.v_min = 1.8 / 3.6
     terrain.v_max = 9.0 / 3.6
@@ -169,12 +204,19 @@ def main() -> None:
     else:
         terrain.bumps = []
 
+    field_coords = kml.field_polygon.coords_xy if kml.field_polygon else None
+    exclusion_polys = [z.coords_xy for z in kml.zones if z.rate == 0]
+    exclusion_circs = [(c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0]
+
     samples = boustrophedon(
         bbox,
         terrain,
         width_m=args.width_m,
         gnss_noise_m=args.gnss_noise_m,
         paint_offset_back_m=args.paint_offset_back_m,
+        field_polygon=field_coords,
+        exclusion_polygons=exclusion_polys,
+        exclusion_circles=exclusion_circs,
     )
 
     report = run(

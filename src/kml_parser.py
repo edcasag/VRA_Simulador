@@ -18,8 +18,11 @@ from pathlib import Path
 EARTH_RADIUS_M = 6_371_000.0
 NAMESPACE = {"kml": "http://www.opengis.net/kml/2.2"}
 
-CIRCLE_RE = re.compile(r"^([^=]+)=(-?\d+(?:\.\d+)?):(\d+(?:\.\d+)?)\s*m?$", re.IGNORECASE)
-LABEL_RATE_RE = re.compile(r"^([^=]+)=(-?\d+(?:\.\d+)?)$")
+CIRCLE_RE = re.compile(
+    r"^\s*([^=]+?)\s*=\s*(-?\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)\s*m?\s*$",
+    re.IGNORECASE,
+)
+LABEL_RATE_RE = re.compile(r"^\s*([^=]+?)\s*=\s*(-?\d+(?:\.\d+)?)\s*$")
 
 
 @dataclass
@@ -172,12 +175,19 @@ def parse_kml(path: str | Path) -> KmlData:
         if name_node is None or not name_node.text:
             continue
         classified = _classify_name(name_node.text)
-        if classified is None:
-            continue
-        kind, attrs = classified
 
         polygon_coords = _find(pm, ".//kml:Polygon//kml:coordinates", ".//Polygon//coordinates")
         point_coords = _find(pm, ".//kml:Point/kml:coordinates", ".//Point/coordinates")
+
+        # Polígono sem tag de dose (ex.: contorno do talhão "Viçosa") vira
+        # field_polygon com rate=0, se ainda não houver um Field=Rate explícito.
+        if classified is None:
+            if polygon_coords is not None and polygon_coords.text and field_poly is None:
+                coords = _parse_coords(polygon_coords.text, origin_lat, origin_lon)
+                field_poly = Field(rate=0.0, coords_xy=coords)
+            continue
+
+        kind, attrs = classified
 
         if polygon_coords is not None and polygon_coords.text:
             coords = _parse_coords(polygon_coords.text, origin_lat, origin_lon)

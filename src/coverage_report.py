@@ -57,15 +57,25 @@ class CoverageReport:
         self.noise_clip = noise_clip
         self.lang = lang
         self.rng = random.Random(seed)
-        self.acc: dict[str, ZoneAccumulator] = {
-            z.label: ZoneAccumulator(
-                label=z.label,
+        # Indexa por posição na lista de zonas: tolera dois polígonos com mesmo
+        # rótulo (ex.: "Poor=100" e "Poor=120" no Sítio Viçosa).
+        self.acc: list[ZoneAccumulator] = [
+            ZoneAccumulator(
+                label=self._unique_label(i),
                 rate_alvo=z.rate,
                 area_ha=polygon_area_m2(z.coords_xy) / 10_000.0,
             )
-            for z in self.zones
-        }
+            for i, z in enumerate(self.zones)
+        ]
         self.last_t: float | None = None
+
+    def _unique_label(self, idx: int) -> str:
+        """Sufixa o rótulo com a dose se houver outra zona com o mesmo nome."""
+        z = self.zones[idx]
+        same = [other for other in self.zones if other.label == z.label]
+        if len(same) <= 1:
+            return z.label
+        return f"{z.label}={z.rate:g}"
 
     def update(self, x: float, y: float, t: float, v: float | None) -> None:
         """Acumula dose conforme o trator passa pelo ponto (x,y)."""
@@ -78,26 +88,27 @@ class CoverageReport:
         self.last_t = t
         if dt <= 0:
             return
-        zone = self._find_zone(x, y)
-        if zone is None:
+        zone_idx = self._find_zone_idx(x, y)
+        if zone_idx is None:
             return
+        zone = self.zones[zone_idx]
         eps = self.rng.gauss(0.0, self.noise_std)
         eps = max(-self.noise_clip, min(self.noise_clip, eps))
         delta_area_m2 = self.width_m * v * dt
         delta_kg = zone.rate * (1.0 + eps) * delta_area_m2 / 10_000.0
-        acc = self.acc[zone.label]
+        acc = self.acc[zone_idx]
         acc.massa_aplicada_kg += delta_kg
         acc.area_coberta_m2 += delta_area_m2
 
-    def _find_zone(self, x: float, y: float) -> Polygon | None:
-        for z in self.zones:
+    def _find_zone_idx(self, x: float, y: float) -> int | None:
+        for i, z in enumerate(self.zones):
             if point_in_polygon(x, y, z.coords_xy):
-                return z
+                return i
         return None
 
     def rows(self) -> list[dict[str, float | str]]:
         out: list[dict[str, float | str]] = []
-        for label, acc in self.acc.items():
+        for acc in self.acc:
             if acc.area_coberta_m2 < 1e-3:
                 aplicado = 0.0
             else:
@@ -107,7 +118,7 @@ class CoverageReport:
             )
             out.append(
                 {
-                    "zona": label,
+                    "zona": acc.label,
                     "alvo_kg_ha": round(acc.rate_alvo, 2),
                     "aplicado_kg_ha": round(aplicado, 2),
                     "erro_pct": round(erro_pct, 2),

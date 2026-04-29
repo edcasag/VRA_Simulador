@@ -41,6 +41,16 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_error": "Erro %",
         "tbl_coverage": "Cobertura %",
         "tbl_area": "Área (ha)",
+        "summary_title": "=== Sumário do KML ===",
+        "summary_field": "Talhão",
+        "summary_field_none": "(não informado; bbox usado como limite)",
+        "summary_field_fmt": "{vertices} vértices, área = {area_ha:.2f} ha",
+        "summary_inclusion": "Zonas de inclusão",
+        "summary_exclusion": "Zonas de exclusão",
+        "summary_circles": "Zonas circulares",
+        "summary_samples": "Pontos de amostra",
+        "summary_bbox": "Bbox da trajetória",
+        "summary_strips": "faixas estimadas",
         "intro_slides": [
             {
                 "title": "Aplicação em Taxa Variável (VRA)",
@@ -94,6 +104,16 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_error": "Error %",
         "tbl_coverage": "Coverage %",
         "tbl_area": "Area (ha)",
+        "summary_title": "=== KML summary ===",
+        "summary_field": "Field",
+        "summary_field_none": "(not provided; bbox used as boundary)",
+        "summary_field_fmt": "{vertices} vertices, area = {area_ha:.2f} ha",
+        "summary_inclusion": "Inclusion zones",
+        "summary_exclusion": "Exclusion zones",
+        "summary_circles": "Circular zones",
+        "summary_samples": "Reference samples",
+        "summary_bbox": "Trajectory bbox",
+        "summary_strips": "estimated strips",
         "intro_slides": [
             {
                 "title": "Variable Rate Application (VRA)",
