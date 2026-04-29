@@ -33,19 +33,88 @@ from .terrain import TerrainParams, altitude, contour_lines
 from .tractor_sim import TractorSample
 from .vra_engine import IdwParams, dose_at
 
-# ---------- Colormap canônico (fig:vra do cap 1) ----------
-COLOR_STOPS: list[tuple[float, tuple[int, int, int]]] = [
-    (50.0, (0, 130, 50)),       # Verde escuro
-    (60.0, (140, 200, 60)),     # Verde claro
-    (70.0, (250, 230, 50)),     # Amarelo
-    (80.0, (250, 150, 40)),     # Laranja
-    (85.0, (240, 90, 60)),      # Vermelho claro
-    (90.0, (210, 50, 50)),      # Vermelho médio
-    (100.0, (160, 30, 30)),     # Vermelho escuro
+# ---------- Colormap dinâmico ----------
+# Paleta âncora (verde escuro -> vermelho escuro). Os stops do colormap
+# são interpolados nessa paleta conforme o range de doses do KML.
+_COLORMAP_ANCHORS: list[tuple[int, int, int]] = [
+    (0, 130, 50),       # Verde escuro
+    (140, 200, 60),     # Verde claro
+    (250, 230, 50),     # Amarelo
+    (250, 150, 40),     # Laranja
+    (240, 90, 60),      # Vermelho claro
+    (210, 50, 50),      # Vermelho médio
+    (160, 30, 30),      # Vermelho escuro
 ]
 GRAY_BG = (235, 235, 235)
 GRAY_DARK = (110, 110, 110)
 GRAY_FIELD = (200, 200, 200)
+
+
+def _interpolate_anchors(frac: float) -> tuple[int, int, int]:
+    """Interpola linearmente entre as N âncoras na posição frac em [0,1]."""
+    n = len(_COLORMAP_ANCHORS)
+    pos = max(0.0, min(1.0, frac)) * (n - 1)
+    i = int(pos)
+    if i >= n - 1:
+        return _COLORMAP_ANCHORS[-1]
+    s = pos - i
+    a = _COLORMAP_ANCHORS[i]
+    b = _COLORMAP_ANCHORS[i + 1]
+    return (
+        int(a[0] + s * (b[0] - a[0])),
+        int(a[1] + s * (b[1] - a[1])),
+        int(a[2] + s * (b[2] - a[2])),
+    )
+
+
+@dataclass
+class Colormap:
+    """Lista de stops (rate, RGB) cobrindo o range de doses do KML."""
+    stops: list[tuple[float, tuple[int, int, int]]]
+
+    def color_for_dose(self, rate: float) -> tuple[int, int, int]:
+        """Cor do stop mais próximo. Doses <= 0.5 retornam cinza (exclusão/fora)."""
+        if rate <= 0.5:
+            return GRAY_FIELD
+        best_rate, best_col = self.stops[0]
+        best_d = abs(rate - best_rate)
+        for stop_rate, stop_col in self.stops[1:]:
+            d = abs(rate - stop_rate)
+            if d < best_d:
+                best_rate, best_col = stop_rate, stop_col
+                best_d = d
+        return best_col
+
+    def labels(self) -> list[str]:
+        """Rótulos dos stops em kg/ha (ex.: '75 kg/ha', '88 kg/ha')."""
+        return [f"{int(round(r))} kg/ha" for r, _ in self.stops]
+
+
+def colormap_from_kml(kml: KmlData, n_stops: int = 8) -> Colormap:
+    """Gera N stops uniformemente distribuídos entre min e max das doses > 0
+    do KML (zonas de inclusão, círculos de inclusão e amostras com taxa > 0).
+    Doses 0 representam exclusões e não entram no cálculo de min/max."""
+    rates: list[float] = []
+    rates += [z.rate for z in kml.zones if z.rate > 0]
+    rates += [c.rate for c in kml.circles if c.rate > 0]
+    rates += [s.rate for s in kml.samples if s.rate > 0]
+    if not rates:
+        # KML sem doses > 0; cai para o range histórico do ensaio A/B/C/D
+        min_r, max_r = 50.0, 100.0
+    else:
+        min_r, max_r = min(rates), max(rates)
+        if max_r - min_r < 1.0:
+            # Dose única; padding de ±10% para a paleta não colapsar
+            pad = max(min_r * 0.1, 5.0)
+            min_r -= pad
+            max_r += pad
+    n = max(2, n_stops)
+    stops: list[tuple[float, tuple[int, int, int]]] = []
+    for i in range(n):
+        frac = i / (n - 1)
+        rate = min_r + frac * (max_r - min_r)
+        stops.append((rate, _interpolate_anchors(frac)))
+    return Colormap(stops=stops)
 
 
 def _load_tractor_with_alpha(path: Path, target_h: int = 35, white_threshold: int = 235) -> pygame.Surface:
@@ -72,20 +141,6 @@ def _load_tractor_with_alpha(path: Path, target_h: int = 35, white_threshold: in
     return pygame.transform.smoothscale(raw, (target_w, target_h))
 
 
-def color_for_dose(rate: float) -> tuple[int, int, int]:
-    """Vizinho mais próximo na escala canônica. Doses ≤0 retornam cinza."""
-    if rate <= 0.5:
-        return GRAY_FIELD
-    best = COLOR_STOPS[0]
-    best_d = abs(rate - best[0])
-    for stop in COLOR_STOPS[1:]:
-        d = abs(rate - stop[0])
-        if d < best_d:
-            best = stop
-            best_d = d
-    return best[1]
-
-
 # ---------- Transformação coord → tela ----------
 @dataclass
 class Viewport:
@@ -109,16 +164,18 @@ class Viewport:
 
 
 # ---------- Renderização ----------
-def _draw_zones_filled(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> None:
+def _draw_zones_filled(
+    surf: pygame.Surface, kml: KmlData, vp: Viewport, colormap: Colormap
+) -> None:
     surf.fill((255, 255, 255), vp.rect)
     if kml.field_polygon:
         pts = [vp.world_to_screen(*p) for p in kml.field_polygon.coords_xy]
-        pygame.draw.polygon(surf, color_for_dose(kml.field_polygon.rate), pts)
+        pygame.draw.polygon(surf, colormap.color_for_dose(kml.field_polygon.rate), pts)
     # Inclusões primeiro
     for z in kml.zones:
         if z.rate > 0:
             pts = [vp.world_to_screen(*p) for p in z.coords_xy]
-            pygame.draw.polygon(surf, color_for_dose(z.rate), pts)
+            pygame.draw.polygon(surf, colormap.color_for_dose(z.rate), pts)
     # Exclusões por cima
     for z in kml.zones:
         if z.rate == 0:
@@ -128,7 +185,7 @@ def _draw_zones_filled(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> None
     for c in kml.circles:
         cx, cy = vp.world_to_screen(c.x, c.y)
         rpx = vp.cell_size_px(c.radius_m * 2) // 2
-        col = (90, 90, 90) if c.rate == 0 else color_for_dose(c.rate)
+        col = (90, 90, 90) if c.rate == 0 else colormap.color_for_dose(c.rate)
         pygame.draw.circle(surf, col, (cx, cy), max(2, rpx))
 
 
@@ -175,21 +232,26 @@ def _draw_contours(
 
 
 def _draw_legend(
-    surf: pygame.Surface, font: pygame.font.Font, x: int, y: int, lang: str
+    surf: pygame.Surface,
+    font: pygame.font.Font,
+    x: int,
+    y: int,
+    colormap: Colormap,
+    lang: str,
 ) -> None:
     box_w = 230
     line_h = 22
-    box_h = line_h * (len(COLOR_STOPS) + 1) + 12
+    box_h = line_h * (len(colormap.stops) + 1) + 12
     pygame.draw.rect(surf, (255, 255, 255), (x, y, box_w, box_h))
     pygame.draw.rect(surf, (50, 50, 50), (x, y, box_w, box_h), 1)
     title = font.render(t(lang, "legend_title"), True, (0, 0, 0))
     surf.blit(title, (x + 8, y + 6))
-    color_names = t(lang, "color_names")
-    for i, (rate, color) in enumerate(COLOR_STOPS):
+    labels = colormap.labels()
+    for i, (_rate, color) in enumerate(colormap.stops):
         yy = y + 10 + line_h * (i + 1)
         pygame.draw.rect(surf, color, (x + 8, yy, 22, 16))
         pygame.draw.rect(surf, (50, 50, 50), (x + 8, yy, 22, 16), 1)
-        text = font.render(color_names[i], True, (0, 0, 0))
+        text = font.render(labels[i], True, (0, 0, 0))
         surf.blit(text, (x + 36, yy))
 
 
@@ -355,6 +417,10 @@ def run(
     slide_title_font = pygame.font.SysFont("Segoe UI", 32, bold=True)
     slide_body_font = pygame.font.SysFont("Segoe UI", 22, bold=True)
 
+    # Colormap dinâmico baseado no range de doses do KML (zero é exclusão e
+    # não conta para min/max).
+    colormap = colormap_from_kml(kml)
+
     bbox = kml.bbox()
     # Margem suficiente para o trator caber durante curvas em U (raio=width_m/2 + folga)
     margin = max(width_m / 2 + 5.0, 0.05 * max(bbox[2] - bbox[0], bbox[3] - bbox[1]))
@@ -369,10 +435,10 @@ def run(
     static_left = pygame.Surface((1280, 720))
     static_left.fill((250, 250, 250))
     pygame.draw.rect(static_left, GRAY_BG, left_rect)
-    _draw_zones_filled(static_left, kml, vp_left)
+    _draw_zones_filled(static_left, kml, vp_left, colormap)
     _draw_zone_outlines(static_left, kml, vp_left)
     _draw_zone_labels(static_left, kml, vp_left, big_font)
-    _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, lang)
+    _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, colormap, lang)
 
     # Painel direito (fundo dinâmico): cinza-claro + contornos das zonas (esqueleto)
     static_right = pygame.Surface((640, 720))
@@ -430,7 +496,7 @@ def run(
         orientado pelo heading. Devolve as coordenadas do centro da pintura."""
         if s.heading is None:
             d = dose_at(s.x, s.y, kml)
-            color = color_for_dose(d)
+            color = colormap.color_for_dose(d)
             sx, sy = vp_right_local.world_to_screen(s.x, s.y)
             sz = vp_right_local.cell_size_px(paint_step_m)
             pygame.draw.rect(
@@ -447,7 +513,7 @@ def run(
         cx = s.x - hx * paint_offset_back_m
         cy = s.y - hy * paint_offset_back_m
         d = dose_at(cx, cy, kml)
-        color = color_for_dose(d)
+        color = colormap.color_for_dose(d)
         # Vetor perpendicular (rotação 90°)
         perp_x, perp_y = -hy, hx
         hl = paint_step_m / 2.0

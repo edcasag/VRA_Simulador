@@ -12,15 +12,6 @@ STRINGS: dict[str, dict[str, Any]] = {
     "pt": {
         "header_title": "Simulador VRA",
         "legend_title": "Taxa de aplicação (kg/ha)",
-        "color_names": [
-            "Verde escuro 50",
-            "Verde claro 60",
-            "Amarelo 70",
-            "Laranja 80",
-            "Vermelho claro 85",
-            "Vermelho médio 90",
-            "Vermelho escuro 100",
-        ],
         "ready_banner": "Pronto — pressione ESPAÇO para iniciar a simulação",
         "slide_footer": "Slide {idx} / {total}   —   ESPAÇO para iniciar",
         "report_title": "Relatório de aplicação por zona — Tab. 6 cap 7 §7.3",
@@ -75,15 +66,6 @@ STRINGS: dict[str, dict[str, Any]] = {
     "en": {
         "header_title": "VRA Simulator",
         "legend_title": "Application rate (kg/ha)",
-        "color_names": [
-            "Dark green 50",
-            "Light green 60",
-            "Yellow 70",
-            "Orange 80",
-            "Light red 85",
-            "Medium red 90",
-            "Dark red 100",
-        ],
         "ready_banner": "Ready — press SPACE to start the simulation",
         "slide_footer": "Slide {idx} / {total}   —   SPACE to start",
         "report_title": "Application report by zone — Tab. 6 ch. 7 §7.3",
