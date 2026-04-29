@@ -1,91 +1,239 @@
-# Simulador VRA — Tese de Mestrado POLI/USP
+# VRA_Simulador
 
-Simulação Python do algoritmo de aplicação em taxa variável (VRA) descrito na dissertação **"Aplicação em Taxa Variável na Agricultura Familiar com Zonas de Manejo no Google Earth"** (Edson Casagrande, PPG Engenharia de Computação, EP-USP, orientação Prof. Carlos Eduardo Cugnasca).
+Simulador em Python da aplicação em taxa variável (VRA) com zonas de manejo lidas de um KML do Google Earth. Reproduz o comportamento de um operador humano dirigindo um trator com distribuidor de discos: faz cabeceira em talhões irregulares, contorna construções, modula a velocidade pelo declive e reporta a massa efetivamente aplicada por zona em comparação com a prescrição planejada.
 
-Lê um KML do Google Earth nas convenções da Tab. 4 (cap 6 §6.3 da tese), calcula dose por coordenada GNSS via IDW (cap 5 §5.4), simula um trator percorrendo o talhão com velocidade variável conforme o relevo, e mostra split-screen pygame com mapa de zonas + pintura progressiva. Reproduz numericamente a Tab. 6 do cap 7 §7.3 (acurácia sob variação de velocidade, erro ≤±5%).
+Acompanha a dissertação de mestrado de Edson Casagrande na Escola Politécnica da USP (POLI/USP), orientação Prof. Carlos Eduardo Cugnasca.
+
+![Captura do simulador rodando o Sítio Palmar](assets/screenshot_palmar.png)
+
+> 🇬🇧 **English version**: see the section [English](#english) at the end of this document.
+
+---
+
+## Recursos
+
+- Lê zonas de manejo de um KML do Google Earth (polígonos, círculos, pontos de amostra).
+- Trajetória boustrofédica (vai e volta) com curvas em U, recortada pelo contorno irregular do talhão (Estratégia B).
+- Cabeceira automática (passada do perímetro) em talhões com geometria irregular.
+- Desvio de zonas de exclusão (construções, áreas de pousio, mata) e de pequenos obstáculos circulares (cupins, pedras).
+- Velocidade do trator modulada pelo declive analítico do terreno (subida desacelera, descida acelera).
+- Interpolação IDW (Inverse Distance Weighting) para pontos de amostra esparsos.
+- Relatório por zona em kg planejados vs kg efetivamente aplicados, com erro %, cobertura % e linha de total.
+- Interface bilíngue (pt-BR e en-US) via `--lang`.
+- Snapshots automáticos da janela em 25%, 50% e 100% da cobertura, salvos como PNG.
+
+## Pré-requisitos
+
+- **Python 3.13** ou superior. Recomendado instalar de [python.org](https://www.python.org/downloads/) (marcar "Add python.exe to PATH" no instalador).
+- Sistema operacional: Windows, Linux ou macOS.
+
+Dependências (3 pacotes Python, ~30 MB no total):
+
+- `pygame >= 2.5` — janela e renderização
+- `numpy >= 1.24` — auxiliar para o ícone do trator
+- `pytest >= 7.4` — apenas para rodar os testes
 
 ## Instalação
 
 ```bash
+# Clonar o repositório
+git clone https://github.com/edcasag/VRA_Simulador.git
+cd VRA_Simulador
+
+# Instalar as dependências (no Python do sistema)
 python -m pip install -r requirements.txt
 ```
 
-(Se preferir venv: `python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt`.)
-
-## Uso
+Se preferir um ambiente virtual isolado (recomendado para evitar conflito com outros projetos Python):
 
 ```bash
-# Testes unitários (deve mostrar 9/9 vra_engine + 11/11 terrain passando)
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Uso rápido
+
+```bash
+# Roda direto, em português
+python -m src.main data/ensaio_abcd.kml
+
+# Em inglês, com snapshots em pasta separada (artigo CEA, etc.)
+python -m src.main data/ensaio_abcd.kml --lang en --docs-dir docs/en
+
+# Modo apresentação (pausado no início, slides explicativos, ESPAÇO inicia)
+# Útil para gravar vídeo da tela
+python -m src.main data/Sitio\ Palmar.kml --paused-start
+
+# Talhão real e irregular (Sítio Palmar) — cabeceira automática ativada
+python -m src.main "data/Sitio Palmar.kml"
+
+# Ver todas as opções
+python -m src.main --help
+```
+
+Com `py` launcher no Windows (caso tenha mais de uma versão de Python instalada):
+
+```powershell
+py -m src.main data/ensaio_abcd.kml
+```
+
+## Opções da CLI
+
+| Argumento | Tipo | Default | Descrição |
+|---|---|---|---|
+| `kml` (posicional) | caminho | obrigatório | Arquivo `.kml` com as zonas de manejo |
+| `--lang` | `pt` \| `en` | `pt` | Idioma da janela e do CSV do relatório |
+| `--paused-start` | flag | desligado | Inicia pausado, mostra slides; ESPAÇO inicia |
+| `--headland` | `auto` \| `on` \| `off` | `auto` | Cabeceira (perímetro). Auto: liga se talhão tem ≥5 vértices |
+| `--speed-factor` | float | `0.3` | Velocidade da animação (0.2 lenta, 1 média, 3 rápida) |
+| `--docs-dir` | caminho | `docs/` | Diretório para snapshots PNG e CSV |
+| `--snapshot-prefix` | string | `snapshot` | Prefixo dos snapshots automáticos |
+| `--width-m` | float | `20.0` | Largura da faixa de aplicação do distribuidor (m) |
+| `--cell-m` | float | `1.5` | Profundidade longitudinal do retângulo de pintura (m) |
+| `--paint-offset-back-m` | float | `1.0` | Distância da pintura atrás do trator (m) |
+| `--gnss-noise-m` | float | `0.0` | Desvio-padrão do ruído GNSS (m) |
+| `--decline-x` | float | `0.04` | Declive em x (m/m), default 4% |
+| `--decline-y` | float | `0.0` | Declive em y (m/m) |
+| `--bump-h` | float | `2.0` | Altura da bossa central do terreno (m) |
+
+Teclas durante a simulação:
+
+| Tecla | Ação |
+|---|---|
+| `ESPAÇO` | Pausa/retoma; avança slides na introdução; abre relatório no final |
+| `S` | Salva snapshot manual da janela atual |
+| `ESC` | Fecha |
+
+## Convenção do KML
+
+| Feature | Sintaxe (no campo `<name>`) | Significado |
+|---|---|---|
+| Polígono talhão | `Field=0` ou nome qualquer (ex.: `Palmar`) | Contorno do talhão. Sem tag, vira `field_polygon` com rate 0 |
+| Polígono inclusão (com label) | `Good=100` | Zona de aplicação com dose 100 kg/ha |
+| Polígono inclusão (sem label) | `100` | Equivalente, com label autonumerado (Z1, Z2…) |
+| Polígono exclusão | `Sede=0` ou apenas `0` | Não aplicar (construção, mata, pousio) |
+| Círculo (com label) | `Pedra=0:5m` | Exclusão circular de raio 5 m |
+| Círculo (sem label) | `0:5m` | Idem, label autogerado |
+| Ponto de amostra (IDW) | `120` | Amostra com taxa 120 kg/ha em coordenada específica |
+
+Espaços ao redor do `=` e do `:` são tolerados (`Good = 100` funciona igual a `Good=100`).
+
+Quando duas zonas de inclusão se sobrepõem, **vence a de menor área** (a "sub-zona específica" predomina sobre a "zona-fundo"). Útil para modelagem hierárquica.
+
+## KMLs incluídos
+
+| Arquivo | Conteúdo | Uso |
+|---|---|---|
+| `data/ensaio_abcd.kml` | 4 zonas A/B/C/D, retangulares, 1 ha cada, doses 90/75/60/100 kg/ha | Ensaio integrado da Tab. 6 da dissertação. Caso ideal: erro próximo de 0% |
+| `data/talhao_completo.kml` | 7 zonas tilando a escala 50–100 kg/ha | Demonstração da legenda de cores |
+| `data/demo_complexo.kml` | Talhão sintético irregular, 4 zonas (60/80/100/120), 3 exclusões | Demonstração da Estratégia B + cabeceira em talhão fictício |
+| `data/Sitio Palmar.kml` | Talhão real do autor, 14 vértices irregulares, 6 zonas, exclusões | Caso de validação em campo real |
+
+## Lendo o relatório
+
+Ao final da simulação, pressione **ESPAÇO** para abrir o painel central com o relatório por zona. O CSV equivalente é salvo em `docs/relatorio_erro.csv`. Colunas:
+
+| Coluna | Significado |
+|---|---|
+| `Zona` | Rótulo da zona (ou Z1/Z2... se sem label no KML) |
+| `Alvo (kg/ha)` | Dose prescrita |
+| `Área (ha)` | Área da zona |
+| `Planejado (kg)` | Massa que seria usada com cobertura e dose perfeitas (alvo × área) |
+| `Aplicado (kg)` | Massa efetivamente depositada na simulação |
+| `Erro %` | (Aplicado − Planejado) / Planejado × 100 |
+| `Cobertura %` | Fração da área da zona varrida pelo swath (pode passar de 100% por sobreposição realista nas bordas) |
+
+A linha **Total** agrega todas as zonas (somatório de planejado e aplicado, e erro % geral da operação).
+
+> **Nota.** Os resultados são aproximados. A operação manual real do trator é mais eficiente. O simulador é uma ferramenta didática que captura efeitos de borda e geometria, não um substituto da realidade de campo.
+
+## Testes
+
+```bash
 python -m pytest tests/ -v
-
-# Modo boustrophedon (apresentação): trator vai-e-volta com velocidade modulada pelo relevo
-python -m src.main data/ensaio_abcd.kml --mode boustrophedon
-
-# Modo aleatório (teste unitário visual): pontos GPS sorteados, mapa emerge por amostragem
-python -m src.main data/ensaio_abcd.kml --mode random
-
-# Talhão maior com 7 zonas cobrindo a legenda canônica da fig:vra
-python -m src.main data/talhao_completo.kml --mode boustrophedon
 ```
 
-Tecla `S` na janela: salva snapshot manual em `docs/`. Snapshots automáticos em 25%, 50% e 100% da cobertura também ficam em `docs/`. Ao final, o relatório de erro por zona é impresso no console e gravado em `docs/relatorio_erro.csv`.
+Cobertura atual: 9 testes do motor VRA + 11 testes do modelo de terreno.
 
-## Parâmetros do declive
+## Como citar
+
+```
+Casagrande, E. (2026). VRA_Simulador (v1.0.0) [Computer software].
+GitHub. https://github.com/edcasag/VRA_Simulador
+```
+
+Ver também `CITATION.cff` na raiz do repositório (formato padronizado, lido por GitHub e Zenodo).
+
+## Licença
+
+[MIT](LICENSE) — uso livre para fins acadêmicos e comerciais, com atribuição.
+
+## Autor
+
+**Edson Casagrande**
+Mestrando em Engenharia da Computação, POLI/USP
+Orientador: Prof. Carlos Eduardo Cugnasca
+GitHub: [@edcasag](https://github.com/edcasag)
+
+---
+
+## English
+
+VRA_Simulador is a Python simulator of variable-rate fertilizer application based on management zones read from a Google Earth KML. It reproduces what a human operator does when driving a tractor with a disc spreader: traces a perimeter pass on irregular fields, drives around buildings, modulates speed by terrain slope, and reports the actual mass applied per zone versus the prescribed amount.
+
+It accompanies the master's dissertation by Edson Casagrande at the Polytechnic School of the University of São Paulo (POLI/USP), under Prof. Carlos Eduardo Cugnasca.
+
+### Quick install
 
 ```bash
-# Sem bossa central, só rampa uniforme 6%
-python -m src.main data/ensaio_abcd.kml --decline-x 0.06 --bump-h 0
-
-# Sem declive, só bossa de 3 m no centro
-python -m src.main data/ensaio_abcd.kml --decline-x 0 --bump-h 3
+git clone https://github.com/edcasag/VRA_Simulador.git
+cd VRA_Simulador
+python -m pip install -r requirements.txt
 ```
 
-## Convenções KML adotadas
+Requirements: Python 3.13+, pygame, numpy, pytest.
 
-Conforme Tab. 4 da dissertação (cap 6 §6.3):
+### Quick run
 
-| Feature KML | Nome (`<name>`) | Significado |
-| --- | --- | --- |
-| `Polygon` | `Label=Rate` | Zona de inclusão com dose `Rate` kg/ha |
-| `Polygon` | `Label=0` | Zona de exclusão (não aplicar) |
-| `Polygon` | `Field=Rate` | Talhão completo, dose-base `Rate` |
-| `Point` | `Label=Rate:Radius` | Região circular (ex.: `Cupinzeiro=0:3m`) |
-| `Point` | `Label=Rate` | Ponto de amostra para IDW |
+```bash
+# Default Portuguese UI
+python -m src.main data/ensaio_abcd.kml
 
-## Colormap
+# English UI, snapshots in a separate folder
+python -m src.main data/ensaio_abcd.kml --lang en --docs-dir docs/en
 
-Sete cores discretas espelhando a `fig:vra` do cap 1 da tese (`images/VRA - Adubo.jpg`):
+# Real irregular field with automatic headland pass
+python -m src.main "data/Sitio Palmar.kml"
 
-| Cor | Dose (kg/ha) |
-| --- | --- |
-| Verde escuro | 50 |
-| Verde claro | 60 |
-| Amarelo | 70 |
-| Laranja | 80 |
-| Vermelho claro | 85 |
-| Vermelho médio | 90 |
-| Vermelho escuro | 100 |
-
-Doses intermediárias (ex.: 75) são mapeadas por vizinho mais próximo da escala.
-
-## Modelo de declive e velocidade
-
-Perfil de altitude analítico:
-
-```text
-Z(x,y) = a·x + b·y + Σ h·exp(−r²/2σ²)
+# Show all options
+python -m src.main --help
 ```
 
-Velocidade do trator modulada pelo gradiente projetado sobre a direção de movimento:
+### Keys during simulation
 
-```text
-v = clip(v_nom − α·∇Z·ĥ, v_min, v_max)
+- `SPACE`: pause/resume; advance intro slides; open report at the end
+- `S`: save manual snapshot of the current window
+- `ESC`: close
+
+### KML conventions
+
+Polygon names follow `Label=Rate` for inclusion zones (e.g., `Good=100`), `Label=0` or just `0` for exclusion zones, and `Label=Rate:Radius` (e.g., `Pedra=0:5m`) for circular exclusions. Plain numbers (`120`) on points are IDW samples. See the Portuguese section above for the full table.
+
+### Report
+
+Each zone reports planned vs applied mass (kg), error %, and coverage %. A total line aggregates the entire field. **Note:** results are approximate; real manual tractor operation is more efficient. The simulator is a didactic tool that captures geometric and boundary effects.
+
+### How to cite
+
+```
+Casagrande, E. (2026). VRA_Simulador (v1.0.0) [Computer software].
+GitHub. https://github.com/edcasag/VRA_Simulador
 ```
 
-Defaults: `v_nom=5.0`, `v_min=1.5`, `v_max=7.0` m/s, `α=50` m/s por (m/m).
+### License
 
-## Limitações
-
-- KML `data/ensaio_abcd.kml` usa zonas explícitas com lookup direto; a interpolação IDW é exercitada apenas em pontos de amostra esparsos (não cobertos nesta primeira entrega).
-- Erro de aplicação por zona modelado de forma agregada como ruído gaussiano truncado ±5% — aproximação que representa latência do controlador, atuador e GNSS sem modelar cada componente isoladamente.
-- Rotação/curvatura do trator simplificadas: o vetor heading muda discretamente entre faixas, sem dinâmica de viragem.
+[MIT](LICENSE).

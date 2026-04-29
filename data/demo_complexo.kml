@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Demo complexo — talhao irregular sintetico</name>
+  <description>Talhao fictıcio, ~300x300 m, com 4 zonas e 3 exclusoes para demonstrar a Estrategia B.</description>
+
+  <Placemark>
+    <name>Field=0</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4990000,-22.4976486,0 -47.4979274,-22.4980991,0 -47.4975373,-22.4990000,0 -47.4977323,-22.4999910,0 -47.4990000,-22.5003514,0 -47.5000726,-22.4999009,0 -47.5004627,-22.4990000,0 -47.5000726,-22.4980991,0 -47.4990000,-22.4976486,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>A=60</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4990000,-22.4976486,0 -47.4990000,-22.4990000,0 -47.5004627,-22.4990000,0 -47.5000726,-22.4980991,0 -47.4990000,-22.4976486,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>B=80</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4990000,-22.4976486,0 -47.4979274,-22.4980991,0 -47.4975373,-22.4990000,0 -47.4990000,-22.4990000,0 -47.4990000,-22.4976486,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>C=100</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4990000,-22.4990000,0 -47.5004627,-22.4990000,0 -47.5000726,-22.4999009,0 -47.4990000,-22.5003514,0 -47.4990000,-22.4990000,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>D=120</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4990000,-22.4990000,0 -47.4990000,-22.5003514,0 -47.4977323,-22.4999910,0 -47.4975373,-22.4990000,0 -47.4990000,-22.4990000,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Construcao=0</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4985612,-22.4985946,0 -47.4982687,-22.4985946,0 -47.4982687,-22.4983243,0 -47.4985612,-22.4983243,0 -47.4985612,-22.4985946,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Reservatorio=0</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4994876,-22.4994054,0 -47.4992925,-22.4994955,0 -47.4992925,-22.4996757,0 -47.4994876,-22.4997658,0 -47.4996826,-22.4996757,0 -47.4996826,-22.4994955,0 -47.4994876,-22.4994054,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+  <Placemark>
+    <name>Mata=0</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.4984149,-22.4994054,0 -47.4980736,-22.4994505,0 -47.4979761,-22.4996306,0 -47.4981711,-22.4998108,0 -47.4984149,-22.4996757,0 -47.4984149,-22.4994054,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>60</name>
+    <Point><coordinates>-47.4995851,-22.4984595,0</coordinates></Point>
+  </Placemark>
+  <Placemark>
+    <name>80</name>
+    <Point><coordinates>-47.4984149,-22.4980991,0</coordinates></Point>
+  </Placemark>
+  <Placemark>
+    <name>100</name>
+    <Point><coordinates>-47.4995851,-22.4999009,0</coordinates></Point>
+  </Placemark>
+  <Placemark>
+    <name>120</name>
+    <Point><coordinates>-47.4984149,-22.5001712,0</coordinates></Point>
+  </Placemark>
+</Document>
+</kml>
