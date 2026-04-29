@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Talhão completo — 7 zonas cobrindo a legenda canônica da fig:vra</name>
+  <description>Demonstração visual da escala 50–100 kg/ha, com 1 círculo de exclusão e 1 polígono de exclusão.</description>
+
+  <Placemark>
+    <name>Z1=50</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.500000,0
+      -47.498050,-22.500000,0
+      -47.498050,-22.499550,0
+      -47.500000,-22.499550,0
+      -47.500000,-22.500000,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z2=60</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.499550,0
+      -47.498050,-22.499550,0
+      -47.498050,-22.499099,0
+      -47.500000,-22.499099,0
+      -47.500000,-22.499550,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z3=70</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.499099,0
+      -47.498050,-22.499099,0
+      -47.498050,-22.498649,0
+      -47.500000,-22.498649,0
+      -47.500000,-22.499099,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z4=80</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.498649,0
+      -47.498050,-22.498649,0
+      -47.498050,-22.498198,0
+      -47.500000,-22.498198,0
+      -47.500000,-22.498649,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z5=85</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.498198,0
+      -47.498050,-22.498198,0
+      -47.498050,-22.497748,0
+      -47.500000,-22.497748,0
+      -47.500000,-22.498198,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z6=90</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.497748,0
+      -47.498050,-22.497748,0
+      -47.498050,-22.497297,0
+      -47.500000,-22.497297,0
+      -47.500000,-22.497748,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Z7=100</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.497297,0
+      -47.498050,-22.497297,0
+      -47.498050,-22.496847,0
+      -47.500000,-22.496847,0
+      -47.500000,-22.497297,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>Cupinzeiro=0:5m</name>
+    <Point><coordinates>-47.499025,-22.498649,0</coordinates></Point>
+  </Placemark>
+
+  <Placemark>
+    <name>Casa=0</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.498600,-22.497500,0
+      -47.498400,-22.497500,0
+      -47.498400,-22.497400,0
+      -47.498600,-22.497400,0
+      -47.498600,-22.497500,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+</Document>
+</kml>
