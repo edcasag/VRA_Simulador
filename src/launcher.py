@@ -17,14 +17,12 @@ import argparse
 import sys
 import tkinter as tk
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
+
+from .paths import DATA_DIR
 
 SIM_SPEED_VALUES = {"slow": 0.2, "medium": 0.3, "fast": 1.0}
 TRACTOR_SPEED_KMH = {"slow": 4.0, "medium": 6.0, "fast": 8.0}
-
-# data/ é irmão de src/ tanto no repo da tese (_python/data/) quanto no
-# repo público (VRA_Simulador/data/).
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def _list_kmls() -> list[Path]:
@@ -85,16 +83,30 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
 
     # Exemplo de KML
     ttk.Label(
-        main_frame, text="Exemplo / KML example", font=("Segoe UI", 10, "bold")
+        main_frame, text="Arquivo KML / KML file", font=("Segoe UI", 10, "bold")
     ).pack(anchor="w")
+    kml_row = ttk.Frame(main_frame)
+    kml_row.pack(anchor="w", padx=20, pady=(2, 12), fill="x")
     kml_combo = ttk.Combobox(
-        main_frame,
+        kml_row,
         textvariable=kml_var,
         values=kml_names,
-        state="readonly" if kml_names else "normal",
-        width=58,
+        width=42,
     )
-    kml_combo.pack(anchor="w", padx=20, pady=(2, 12))
+    kml_combo.pack(side="left", padx=(0, 6))
+
+    def browse_kml() -> None:
+        path = filedialog.askopenfilename(
+            title="Selecione um arquivo KML / Select a KML file",
+            filetypes=[("KML files", "*.kml"), ("All files", "*.*")],
+            initialdir=str(DATA_DIR) if DATA_DIR.exists() else None,
+        )
+        if path:
+            kml_var.set(path)
+
+    ttk.Button(
+        kml_row, text="Procurar... / Browse...", command=browse_kml
+    ).pack(side="left")
 
     # Idioma
     ttk.Label(main_frame, text="Idioma / Language", font=("Segoe UI", 10, "bold")).pack(

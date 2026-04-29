@@ -21,7 +21,8 @@ os.environ.setdefault("SDL_VIDEO_CENTERED", "1")
 
 import pygame
 
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+from .paths import ASSETS_DIR  # noqa: E402
+
 TRACTOR_IMG_PATH = ASSETS_DIR / "trator.jpg"
 
 HEADER_H = 36
