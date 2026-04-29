@@ -64,6 +64,12 @@ def parse_args() -> argparse.Namespace:
         default="snapshot",
         help="Prefixo para snapshots automáticos",
     )
+    p.add_argument(
+        "--paused-start",
+        action="store_true",
+        help="Inicia pausado; pressione ESPAÇO para começar (útil para iniciar a "
+        "gravação de tela com a janela do pygame em foco antes da animação rodar).",
+    )
     return p.parse_args()
 
 
@@ -110,6 +116,7 @@ def main() -> None:
         snapshot_prefix=args.snapshot_prefix,
         speed_factor=args.speed_factor,
         paint_offset_back_m=args.paint_offset_back_m,
+        start_paused=args.paused_start,
     )
 
     print()

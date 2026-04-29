@@ -24,6 +24,30 @@ import pygame
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 TRACTOR_IMG_PATH = ASSETS_DIR / "trator.jpg"
 
+HEADER_H = 36
+HEADER_TITLE = "Dissertação de Mestrado — Edson Casagrande"
+
+INTRO_SLIDES: list[dict[str, object]] = [
+    {
+        "title": "Aplicação em Taxa Variável (VRA)",
+        "lines": [
+            "4 zonas (A, B, C, D) de 1 ha, doses 90/75/60/100 kg/ha.",
+            "Esquerda: mapa esperado. Direita: aplicação simulada.",
+            "Trator de 2 m com distribuidor de discos de 20 m.",
+        ],
+        "duration_s": 7.0,
+    },
+    {
+        "title": "Velocidade modulada pelo relevo",
+        "lines": [
+            "Velocidade nominal 6 km/h, modulada pelo declive Z(x, y).",
+            "Subida até 1,8 km/h; descida até 9 km/h.",
+            "Controlador ajusta a vazão; erro residual ≤ ±5%.",
+        ],
+        "duration_s": 7.0,
+    },
+]
+
 from .coverage_report import CoverageReport
 from .kml_parser import KmlData
 from .terrain import TerrainParams, altitude, contour_lines
@@ -156,7 +180,7 @@ def _draw_zone_labels(
         cx = sum(p[0] for p in z.coords_xy) / len(z.coords_xy)
         cy = sum(p[1] for p in z.coords_xy) / len(z.coords_xy)
         sx, sy = vp.world_to_screen(cx, cy)
-        text = font.render(f"{z.label}={int(z.rate)}", True, (10, 10, 10))
+        text = font.render(f"{z.label} = {int(z.rate)} kg/ha", True, (0, 0, 0))
         rect = text.get_rect(center=(sx, sy))
         bg = pygame.Surface((rect.width + 6, rect.height + 4), pygame.SRCALPHA)
         bg.fill((255, 255, 255, 200))
@@ -186,13 +210,13 @@ def _draw_legend(surf: pygame.Surface, font: pygame.font.Font, x: int, y: int) -
     box_h = line_h * (len(COLOR_STOPS) + 1) + 12
     pygame.draw.rect(surf, (255, 255, 255), (x, y, box_w, box_h))
     pygame.draw.rect(surf, (50, 50, 50), (x, y, box_w, box_h), 1)
-    title = font.render("Taxa de aplicação (kg/ha)", True, (10, 10, 10))
+    title = font.render("Taxa de aplicação (kg/ha)", True, (0, 0, 0))
     surf.blit(title, (x + 8, y + 6))
     for i, (rate, color) in enumerate(COLOR_STOPS):
         yy = y + 10 + line_h * (i + 1)
         pygame.draw.rect(surf, color, (x + 8, yy, 22, 16))
         pygame.draw.rect(surf, (50, 50, 50), (x + 8, yy, 22, 16), 1)
-        text = font.render(COLOR_NAMES[i], True, (10, 10, 10))
+        text = font.render(COLOR_NAMES[i], True, (0, 0, 0))
         surf.blit(text, (x + 36, yy))
 
 
@@ -212,8 +236,117 @@ def _draw_hud(
     pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 1)
     surf.blit(panel, (panel_x, panel_y))
     for i, (k, v) in enumerate(info.items()):
-        text = font.render(f"{k}: {v}", True, (10, 10, 10))
+        text = font.render(f"{k}: {v}", True, (0, 0, 0))
         surf.blit(text, (panel_x + 8, panel_y + 6 + i * 22))
+
+
+def _draw_intro_slide(
+    screen: pygame.Surface,
+    title_font: pygame.font.Font,
+    body_font: pygame.font.Font,
+    footer_font: pygame.font.Font,
+    slide: dict[str, object],
+    idx: int,
+    total: int,
+    elapsed: float,
+) -> None:
+    """Painel central com um slide da introdução (título + corpo + footer com progresso)."""
+    title_str = str(slide["title"])
+    body_lines: list[str] = list(slide["lines"])  # type: ignore[arg-type]
+    duration = float(slide["duration_s"])  # type: ignore[arg-type]
+
+    title_surf = title_font.render(title_str, True, (0, 0, 0))
+    body_surfs = [body_font.render(ln, True, (0, 0, 0)) for ln in body_lines]
+    footer_str = f"Slide {idx + 1} / {total}   —   ESPAÇO para iniciar"
+    footer_surf = footer_font.render(footer_str, True, (60, 60, 60))
+
+    line_h = body_font.get_linesize() + 4
+    body_h = max(len(body_surfs), 1) * line_h
+    body_w = max(
+        [title_surf.get_width(), footer_surf.get_width()]
+        + [s.get_width() for s in body_surfs]
+    )
+    panel_w = body_w + 100
+    panel_h = title_surf.get_height() + 24 + body_h + 24 + footer_surf.get_height() + 32 + 14
+    panel_x = (1280 - panel_w) // 2
+    panel_y = (720 - panel_h) // 2
+
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((255, 255, 245, 240))
+    pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 2)
+
+    # Título
+    panel.blit(title_surf, ((panel_w - title_surf.get_width()) // 2, 18))
+    body_y = 18 + title_surf.get_height() + 18
+    for i, surf in enumerate(body_surfs):
+        panel.blit(surf, (50, body_y + i * line_h))
+
+    # Barra de progresso (tempo do slide)
+    bar_y = body_y + body_h + 18
+    bar_w = panel_w - 80
+    pygame.draw.rect(panel, (220, 220, 220), (40, bar_y, bar_w, 6))
+    progress = max(0.0, min(1.0, elapsed / max(duration, 0.001)))
+    pygame.draw.rect(panel, (90, 130, 90), (40, bar_y, int(bar_w * progress), 6))
+
+    # Footer
+    panel.blit(
+        footer_surf,
+        ((panel_w - footer_surf.get_width()) // 2, panel_h - footer_surf.get_height() - 14),
+    )
+    screen.blit(panel, (panel_x, panel_y))
+
+
+def _draw_ready_banner(screen: pygame.Surface, big_font: pygame.font.Font) -> None:
+    """Banner final indicando que o usuário pode iniciar."""
+    msg = "Pronto — pressione ESPAÇO para iniciar a simulação"
+    text = big_font.render(msg, True, (0, 0, 0))
+    tw, th = text.get_size()
+    panel_w = tw + 80
+    panel_h = th + 40
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((255, 255, 200, 245))
+    pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 2)
+    panel.blit(text, ((panel_w - tw) // 2, (panel_h - th) // 2))
+    screen.blit(panel, ((1280 - panel_w) // 2, (720 - panel_h) // 2))
+
+
+def _draw_report_panel(
+    screen: pygame.Surface,
+    mono_font: pygame.font.Font,
+    big_font: pygame.font.Font,
+    report_lines: list[str],
+) -> None:
+    """Painel central com o relatório de aplicação por zona ao final da simulação."""
+    title_str = "Relatório de aplicação por zona — Tab. 6 cap 7 §7.3"
+    footer_str = "Pressione qualquer tecla para fechar"
+    line_h = 22
+    title = big_font.render(title_str, True, (0, 0, 0))
+    footer = big_font.render(footer_str, True, (60, 60, 60))
+    rendered_lines = [mono_font.render(ln, True, (0, 0, 0)) for ln in report_lines]
+    body_w = max(ln.get_width() for ln in rendered_lines)
+    panel_w = max(title.get_width(), footer.get_width(), body_w) + 60
+    panel_h = (
+        title.get_height()
+        + 16
+        + len(rendered_lines) * line_h
+        + 16
+        + footer.get_height()
+        + 40
+    )
+    panel_x = (1280 - panel_w) // 2
+    panel_y = (720 - panel_h) // 2
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((255, 255, 245, 240))
+    pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 2)
+    panel.blit(title, ((panel_w - title.get_width()) // 2, 16))
+    body_y = 16 + title.get_height() + 16
+    for i, ln_surf in enumerate(rendered_lines):
+        panel.blit(ln_surf, (30, body_y + i * line_h))
+    panel.blit(
+        footer,
+        ((panel_w - footer.get_width()) // 2, panel_h - footer.get_height() - 16),
+    )
+    screen.blit(panel, (panel_x, panel_y))
 
 
 # ---------- Loop principal ----------
@@ -224,13 +357,14 @@ def run(
     mode_label: str,
     width_m: float = 3.0,
     cell_m: float = 1.0,
-    title: str = "Simulador VRA — Tese de Mestrado POLI/USP",
+    title: str = "Dissertação de Mestrado — Edson Casagrande",
     docs_dir: str | Path = "docs",
     snapshots_at_pct: tuple[int, ...] = (25, 50, 100),
     snapshot_prefix: str = "snapshot",
     speed_factor: float = 8.0,
     max_fps: int = 60,
     paint_offset_back_m: float = 1.0,
+    start_paused: bool = False,
 ) -> CoverageReport:
     """Executa a visualização. Devolve o CoverageReport ao terminar."""
     pygame.init()
@@ -239,14 +373,18 @@ def run(
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Segoe UI", 14)
     big_font = pygame.font.SysFont("Segoe UI", 18, bold=True)
+    mono_font = pygame.font.SysFont("Consolas,Courier New,monospace", 16)
+    # Fontes maiores para os slides de introdução, mais fáceis de ler à distância
+    slide_title_font = pygame.font.SysFont("Segoe UI", 32, bold=True)
+    slide_body_font = pygame.font.SysFont("Segoe UI", 22, bold=True)
 
     bbox = kml.bbox()
     # Margem suficiente para o trator caber durante curvas em U (raio=width_m/2 + folga)
     margin = max(width_m / 2 + 5.0, 0.05 * max(bbox[2] - bbox[0], bbox[3] - bbox[1]))
     bbox = (bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin)
 
-    left_rect = pygame.Rect(0, 0, 640, 720)
-    right_rect = pygame.Rect(640, 0, 640, 720)
+    left_rect = pygame.Rect(0, HEADER_H, 640, 720 - HEADER_H)
+    right_rect = pygame.Rect(640, HEADER_H, 640, 720 - HEADER_H)
     vp_left = Viewport(bbox, left_rect)
     vp_right = Viewport(bbox, right_rect)
 
@@ -262,14 +400,24 @@ def run(
     # Painel direito (fundo dinâmico): cinza-claro + contornos das zonas (esqueleto)
     static_right = pygame.Surface((640, 720))
     static_right.fill(GRAY_BG)
-    # Viewport com origem (0,0) usado tanto para isolinhas como para pintura do trator
-    vp_right_local = Viewport(bbox, pygame.Rect(0, 0, 640, 720))
+    # Viewport com origem (0, HEADER_H) — reserva a faixa do cabeçalho
+    vp_right_local = Viewport(bbox, pygame.Rect(0, HEADER_H, 640, 720 - HEADER_H))
     # Contorno claro das zonas (apenas traço, sem preenchimento)
     for z in kml.zones:
         pts = [vp_right_local.world_to_screen(*p) for p in z.coords_xy]
         pygame.draw.polygon(static_right, (180, 180, 180), pts, 1)
     # Isolinhas
     _draw_contours(static_right, bbox, terrain, vp_right_local, spacing=0.5)
+
+    # Cabeçalho fixo no topo da janela (sempre visível)
+    static_header = pygame.Surface((1280, HEADER_H))
+    static_header.fill((245, 245, 245))
+    pygame.draw.line(static_header, (50, 50, 50), (0, HEADER_H - 1), (1280, HEADER_H - 1), 1)
+    header_text = big_font.render(HEADER_TITLE, True, (0, 0, 0))
+    static_header.blit(
+        header_text,
+        ((1280 - header_text.get_width()) // 2, (HEADER_H - header_text.get_height()) // 2),
+    )
 
     # Camada de pintura do trator (acumulada)
     paint_layer = pygame.Surface((640, 720), pygame.SRCALPHA)
@@ -339,21 +487,27 @@ def run(
 
     running = True
     finished = False
+    paused = start_paused
     sim_time = 0.0
     real_time_acc = 0.0
     snapshots_done: set[int] = set()
     idx = 0
+    report_lines: list[str] | None = None
+
+    # Estado da introdução (slides exibidos enquanto pausado, antes da simulação)
+    intro_slides = INTRO_SLIDES if start_paused else []
+    intro_idx = 0
+    intro_slide_start_ms = pygame.time.get_ticks() if intro_slides else 0
 
     last_sample: TractorSample | None = None
     while running:
         clock.tick(max_fps)
 
-        if not finished:
+        if not finished and not paused:
             # Avança amostras proporcional ao speed_factor. Durante curvas em U
-            # (spreading=False), reduz a 1/3 para a manobra ficar visível.
             base_steps = max(1, int(2 * speed_factor))
             in_curve = last_sample is not None and not last_sample.spreading
-            steps_per_frame = max(1, base_steps // 3) if in_curve else base_steps
+            steps_per_frame = max(1, base_steps // 1) if in_curve else base_steps
             for _ in range(steps_per_frame):
                 try:
                     s = next(sample_iter)
@@ -383,6 +537,8 @@ def run(
                 elif finished:
                     # Após terminar, qualquer tecla fecha
                     running = False
+                elif event.key == pygame.K_SPACE:
+                    paused = not paused
                 elif event.key == pygame.K_ESCAPE:
                     running = False
 
@@ -426,18 +582,41 @@ def run(
             hud_anchor = pygame.Rect(330, 40, 0, 0)
             _draw_hud(screen, font, hud_anchor, info)
 
-        pygame.draw.line(screen, (0, 0, 0), (640, 0), (640, 720), 1)
+        pygame.draw.line(screen, (0, 0, 0), (640, HEADER_H), (640, 720), 1)
 
-        # Banner de "concluído" centralizado, esperando tecla
+        # Cabeçalho fixo (sempre por cima)
+        screen.blit(static_header, (0, 0))
+
+        # Slides introdutórios enquanto pausado, depois banner "Pronto"
+        if paused and not finished:
+            if intro_slides and intro_idx < len(intro_slides):
+                # Avança automaticamente após duration_s
+                elapsed_s = (pygame.time.get_ticks() - intro_slide_start_ms) / 1000.0
+                slide = intro_slides[intro_idx]
+                if elapsed_s >= float(slide["duration_s"]):  # type: ignore[arg-type]
+                    intro_idx += 1
+                    intro_slide_start_ms = pygame.time.get_ticks()
+                if intro_idx < len(intro_slides):
+                    _draw_intro_slide(
+                        screen,
+                        slide_title_font,
+                        slide_body_font,
+                        font,
+                        intro_slides[intro_idx],
+                        intro_idx,
+                        len(intro_slides),
+                        elapsed_s,
+                    )
+                else:
+                    _draw_ready_banner(screen, slide_title_font)
+            else:
+                _draw_ready_banner(screen, slide_title_font)
+
+        # Painel central de relatório quando a simulação termina
         if finished:
-            msg = "Simulação concluída — pressione qualquer tecla para fechar"
-            text = big_font.render(msg, True, (10, 10, 10))
-            tw, th = text.get_size()
-            banner = pygame.Surface((tw + 40, th + 24), pygame.SRCALPHA)
-            banner.fill((255, 255, 200, 235))
-            pygame.draw.rect(banner, (50, 50, 50), banner.get_rect(), 2)
-            screen.blit(banner, ((1280 - banner.get_width()) // 2, 12))
-            screen.blit(text, ((1280 - tw) // 2, 12 + 12))
+            if report_lines is None:
+                report_lines = report.render_console().split("\n")
+            _draw_report_panel(screen, mono_font, big_font, report_lines)
 
         pygame.display.flip()
 
