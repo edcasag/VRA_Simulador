@@ -15,6 +15,7 @@ STRINGS: dict[str, dict[str, Any]] = {
         "ready_banner": "Pronto — pressione ESPAÇO para iniciar a simulação",
         "slide_footer": "Slide {idx} / {total}   —   ESPAÇO para iniciar",
         "press_space_for_report": "Pressione ESPAÇO para ver o relatório",
+        "speed_hint": "Velocidade: {speed:.1f}×    +/− ajusta",
         "report_title": "Relatório de aplicação por zona",
         "report_footer": "Pressione qualquer tecla para fechar",
         "report_note": (
@@ -73,6 +74,7 @@ STRINGS: dict[str, dict[str, Any]] = {
         "ready_banner": "Ready — press SPACE to start the simulation",
         "slide_footer": "Slide {idx} / {total}   —   SPACE to start",
         "press_space_for_report": "Press SPACE to see the report",
+        "speed_hint": "Speed: {speed:.1f}×    +/− adjusts",
         "report_title": "Application report by zone",
         "report_footer": "Press any key to close",
         "report_note": (

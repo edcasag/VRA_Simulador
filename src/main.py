@@ -8,13 +8,15 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from .coverage_report import polygon_area_m2
 from .i18n import t
 from .kml_parser import KmlData, parse_kml
+from .launcher import run_launcher, should_show_launcher
 from .terrain import GaussianBump, default_params
-from .tractor_sim import boustrophedon, should_use_headland
+from .tractor_sim import boustrophedon, should_use_headland, uniform_random
 from .visualization import run
 
 
@@ -52,8 +54,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "kml",
         type=Path,
-        help="Path to the .kml file describing the field zones "
-        "(e.g. _python/data/ensaio_abcd.kml).",
+        nargs="?",
+        default=None,
+        help="Path to the .kml file describing the field zones (e.g. "
+        "data/ensaio_abcd.kml). Optional: if omitted, the launcher offers a "
+        "dropdown with the example KMLs in data/.",
     )
     p.add_argument(
         "--lang",
@@ -80,6 +85,27 @@ def parse_args() -> argparse.Namespace:
         "then fills the interior. Improves coverage of irregular boundaries. "
         "auto = on when the field polygon has >= 5 vertices (irregular shape); "
         "off otherwise. on / off force the behavior.",
+    )
+    p.add_argument(
+        "--no-launcher",
+        action="store_true",
+        help="Skip the interactive launcher window even when no other flag is "
+        "provided (useful for batch/CI runs).",
+    )
+    p.add_argument(
+        "--mode",
+        choices=["boustrophedon", "random"],
+        default="boustrophedon",
+        help="Trajectory style. 'boustrophedon' (default): back-and-forth strips "
+        "with U-turns and optional headland pass; 'random': random GPS points, "
+        "useful only for visualizing IDW interpolation (no meaningful report).",
+    )
+    p.add_argument(
+        "--tractor-speed-kmh",
+        type=float,
+        default=6.0,
+        help="Nominal tractor speed in km/h on flat terrain (default: 6.0). "
+        "Min/max saturations are scaled proportionally (~30%% / 150%% of nominal).",
     )
     p.add_argument(
         "--speed-factor",
@@ -191,6 +217,24 @@ def _print_kml_summary(kml: KmlData, lang: str, width_m: float) -> None:
 
 def main() -> None:
     args = parse_args()
+
+    # Launcher interativo: aparece se nenhuma flag foi passada (apenas o KML
+    # posicional opcional). Permite escolher exemplo KML, idioma, modo
+    # apresentação, cabeceira, velocidades via UI.
+    if should_show_launcher():
+        updated = run_launcher(args)
+        if updated is None:
+            # Usuário fechou a janela sem confirmar
+            return
+        args = updated
+
+    if args.kml is None:
+        sys.stderr.write(
+            "Erro: nenhum arquivo KML especificado. Passe um caminho como "
+            "argumento posicional ou rode sem flags para abrir o launcher.\n"
+        )
+        sys.exit(1)
+
     kml = parse_kml(args.kml)
     bbox = kml.bbox()
 
@@ -199,12 +243,12 @@ def main() -> None:
     terrain = default_params(bbox)
     terrain.a = args.decline_x
     terrain.b = args.decline_y
-    # Velocidade nominal típica de trator agrícola distribuidor: 6 km/h ≈ 1.667 m/s.
-    # Saturações: 1.8 km/h em subida íngreme; 9 km/h em descida.
-    # alpha=13.3 -> 5% de subida derruba ~1.2 km/h; 10% satura em v_min.
-    terrain.v_nom = 6.0 / 3.6
-    terrain.v_min = 1.8 / 3.6
-    terrain.v_max = 9.0 / 3.6
+    # Velocidade nominal escolhida pelo usuário (ou 6 km/h padrão); saturações
+    # mantidas proporcionais (~30% / 150% da nominal).
+    v_nom_kmh = args.tractor_speed_kmh
+    terrain.v_nom = v_nom_kmh / 3.6
+    terrain.v_min = (v_nom_kmh * 0.3) / 3.6
+    terrain.v_max = (v_nom_kmh * 1.5) / 3.6
     terrain.alpha = 13.3
     if args.bump_h:
         cx = 0.5 * (bbox[0] + bbox[2])
@@ -223,17 +267,20 @@ def main() -> None:
     else:
         headland = args.headland == "on"
 
-    samples = boustrophedon(
-        bbox,
-        terrain,
-        width_m=args.width_m,
-        gnss_noise_m=args.gnss_noise_m,
-        paint_offset_back_m=args.paint_offset_back_m,
-        field_polygon=field_coords,
-        exclusion_polygons=exclusion_polys,
-        exclusion_circles=exclusion_circs,
-        headland=headland,
-    )
+    if args.mode == "random":
+        samples = uniform_random(bbox)
+    else:
+        samples = boustrophedon(
+            bbox,
+            terrain,
+            width_m=args.width_m,
+            gnss_noise_m=args.gnss_noise_m,
+            paint_offset_back_m=args.paint_offset_back_m,
+            field_polygon=field_coords,
+            exclusion_polygons=exclusion_polys,
+            exclusion_circles=exclusion_circs,
+            headland=headland,
+        )
 
     report = run(
         kml=kml,

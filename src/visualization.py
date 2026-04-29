@@ -374,6 +374,29 @@ def _draw_ready_banner(
     screen.blit(panel, ((1280 - panel_w) // 2, (720 - panel_h) // 2))
 
 
+def _draw_speed_hint(
+    screen: pygame.Surface,
+    font: pygame.font.Font,
+    left_rect: pygame.Rect,
+    legend_height: int,
+    speed_factor: float,
+    lang: str,
+) -> None:
+    """Painel pequeno abaixo da legenda mostrando a velocidade atual da
+    simulação e o atalho +/− para ajustá-la em tempo real."""
+    text = t(lang, "speed_hint").format(speed=speed_factor)
+    surf = font.render(text, True, (10, 10, 10))
+    panel_w = surf.get_width() + 16
+    panel_h = surf.get_height() + 10
+    panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+    panel.fill((255, 255, 255, 230))
+    pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 1)
+    panel.blit(surf, (8, 4))
+    x = left_rect.x + 12
+    y = left_rect.y + 12 + legend_height + 6
+    screen.blit(panel, (x, y))
+
+
 def _draw_press_space_for_report_banner(
     screen: pygame.Surface, big_font: pygame.font.Font, lang: str
 ) -> None:
@@ -494,6 +517,8 @@ def run(
     _draw_zone_outlines(static_left, kml, vp_left)
     _draw_zone_labels(static_left, kml, vp_left, big_font)
     _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, colormap, lang)
+    # Mesma fórmula de altura usada em _draw_legend (line_h * (n + 1) + 12)
+    legend_height = 22 * (len(colormap.stops) + 1) + 12
 
     # Painel direito (fundo dinâmico): cinza-claro + contornos das zonas (esqueleto)
     static_right = pygame.Surface((640, 720))
@@ -651,11 +676,20 @@ def run(
                     paused = not paused
                 elif event.key == pygame.K_ESCAPE:
                     running = False
+                elif event.key in (
+                    pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS
+                ):
+                    speed_factor = min(speed_factor * 1.5, 30.0)
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    speed_factor = max(speed_factor / 1.5, 0.05)
 
         # Compose
         screen.blit(static_left, (0, 0))
         screen.blit(static_right, (640, 0))
         screen.blit(paint_layer, (640, 0))
+
+        # Painel da velocidade da simulação (atual + atalho +/−), abaixo da legenda
+        _draw_speed_hint(screen, font, left_rect, legend_height, speed_factor, lang)
 
         # Trator atual (ícone rotacionado conforme heading; círculo amarelo se sem heading
         # ou sem imagem carregada)

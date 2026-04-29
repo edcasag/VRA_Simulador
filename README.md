@@ -1,5 +1,9 @@
 # VRA_Simulador
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19893499.svg)](https://doi.org/10.5281/zenodo.19893499)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.13+](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/downloads/)
+
 Simulador em Python da aplicação em taxa variável (VRA) com zonas de manejo lidas de um KML do Google Earth. Reproduz o comportamento de um operador humano dirigindo um trator com distribuidor de discos: faz cabeceira em talhões irregulares, contorna construções, modula a velocidade pelo declive e reporta a massa efetivamente aplicada por zona em comparação com a prescrição planejada.
 
 Acompanha a dissertação de mestrado de Edson Casagrande na Escola Politécnica da USP (POLI/USP), orientação Prof. Carlos Eduardo Cugnasca.
@@ -129,9 +133,8 @@ Quando duas zonas de inclusão se sobrepõem, **vence a de menor área** (a "sub
 | Arquivo | Conteúdo | Uso |
 |---|---|---|
 | `data/ensaio_abcd.kml` | 4 zonas A/B/C/D, retangulares, 1 ha cada, doses 90/75/60/100 kg/ha | Ensaio integrado da Tab. 6 da dissertação. Caso ideal: erro próximo de 0% |
-| `data/talhao_completo.kml` | 7 zonas tilando a escala 50–100 kg/ha | Demonstração da legenda de cores |
-| `data/demo_complexo.kml` | Talhão sintético irregular, 4 zonas (60/80/100/120), 3 exclusões | Demonstração da Estratégia B + cabeceira em talhão fictício |
-| `data/Sitio Palmar.kml` | Talhão real do autor, 14 vértices irregulares, 6 zonas, exclusões | Caso de validação em campo real |
+| `data/talhao_completo.kml` | 7 zonas retangulares tilando a escala 50–100 kg/ha | Demonstração da legenda de cores |
+| `data/Sitio Palmar.kml` | Talhão real do autor, 14 vértices irregulares, 6 zonas de inclusão, 1 polígono de exclusão (Sede), 2 círculos (cupins/pedras), 7 amostras IDW | Validação em campo real, demonstração da Estratégia B + cabeceira |
 
 ## Lendo o relatório
 
@@ -161,9 +164,25 @@ Cobertura atual: 9 testes do motor VRA + 11 testes do modelo de terreno.
 
 ## Como citar
 
+Em artigos acadêmicos, use o DOI permanente do Zenodo:
+
 ```
-Casagrande, E. (2026). VRA_Simulador (v1.0.0) [Computer software].
-GitHub. https://github.com/edcasag/VRA_Simulador
+Casagrande, E. (2026). VRA_Simulador (v1.0.0). Zenodo.
+https://doi.org/10.5281/zenodo.19893499
+```
+
+Ou via BibTeX:
+
+```bibtex
+@software{casagrande2026vra,
+  author       = {Casagrande, Edson},
+  title        = {{VRA\_Simulador: Simulador de Aplica\c{c}\~{a}o em Taxa Vari\'{a}vel}},
+  year         = 2026,
+  publisher    = {Zenodo},
+  version      = {v1.0.0},
+  doi          = {10.5281/zenodo.19893499},
+  url          = {https://doi.org/10.5281/zenodo.19893499}
+}
 ```
 
 Ver também `CITATION.cff` na raiz do repositório (formato padronizado, lido por GitHub e Zenodo).
@@ -230,8 +249,8 @@ Each zone reports planned vs applied mass (kg), error %, and coverage %. A total
 ### How to cite
 
 ```
-Casagrande, E. (2026). VRA_Simulador (v1.0.0) [Computer software].
-GitHub. https://github.com/edcasag/VRA_Simulador
+Casagrande, E. (2026). VRA_Simulador (v1.0.0). Zenodo.
+https://doi.org/10.5281/zenodo.19893499
 ```
 
 ### License
