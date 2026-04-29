@@ -14,11 +14,9 @@ STRINGS: dict[str, dict[str, Any]] = {
         "legend_title": "Taxa de aplicação (kg/ha)",
         "ready_banner": "Pronto — pressione ESPAÇO para iniciar a simulação",
         "slide_footer": "Slide {idx} / {total}   —   ESPAÇO para iniciar",
-        "report_title": "Relatório de aplicação por zona — Tab. 6 cap 7 §7.3",
+        "report_title": "Relatório de aplicação por zona",
         "report_footer": "Pressione qualquer tecla para fechar",
-        "report_console_title": (
-            "=== Relatório de aplicação por zona (Tab. 6 cap 7 §7.3) ==="
-        ),
+        "report_console_title": "=== Relatório de aplicação por zona ===",
         "report_saved": "Relatório salvo em",
         "hud_pos": "Pos (m)",
         "hud_altitude": "Altitude",
@@ -46,9 +44,9 @@ STRINGS: dict[str, dict[str, Any]] = {
             {
                 "title": "Aplicação em Taxa Variável (VRA)",
                 "lines": [
-                    "4 zonas (A, B, C, D) de 1 ha, doses 90/75/60/100 kg/ha.",
+                    "{n_zones} zonas de aplicação, doses {min_rate:.0f} a {max_rate:.0f} kg/ha.",
                     "Esquerda: mapa esperado. Direita: aplicação simulada.",
-                    "Trator de 2 m com distribuidor de discos de 20 m.",
+                    "Trator de 2 m, distribuidor de discos de {width_m:.0f} m.",
                 ],
                 "duration_s": 7.0,
             },
@@ -68,11 +66,9 @@ STRINGS: dict[str, dict[str, Any]] = {
         "legend_title": "Application rate (kg/ha)",
         "ready_banner": "Ready — press SPACE to start the simulation",
         "slide_footer": "Slide {idx} / {total}   —   SPACE to start",
-        "report_title": "Application report by zone — Tab. 6 ch. 7 §7.3",
+        "report_title": "Application report by zone",
         "report_footer": "Press any key to close",
-        "report_console_title": (
-            "=== Application report by zone (Tab. 6 ch. 7 §7.3) ==="
-        ),
+        "report_console_title": "=== Application report by zone ===",
         "report_saved": "Report saved to",
         "hud_pos": "Pos (m)",
         "hud_altitude": "Altitude",
@@ -100,9 +96,9 @@ STRINGS: dict[str, dict[str, Any]] = {
             {
                 "title": "Variable Rate Application (VRA)",
                 "lines": [
-                    "4 zones (A, B, C, D) of 1 ha, rates 90/75/60/100 kg/ha.",
+                    "{n_zones} application zones, rates {min_rate:.0f} to {max_rate:.0f} kg/ha.",
                     "Left: target map. Right: simulated application.",
-                    "2 m tractor with 20 m disc spreader.",
+                    "2 m tractor with {width_m:.0f} m disc spreader.",
                 ],
                 "duration_s": 7.0,
             },

@@ -275,6 +275,30 @@ def _draw_hud(
         surf.blit(text, (panel_x + 8, panel_y + 6 + i * 22))
 
 
+def _format_intro_slides(
+    slides_template: list[dict[str, object]], kml: KmlData, width_m: float
+) -> list[dict[str, object]]:
+    """Substitui placeholders {n_zones}, {min_rate}, {max_rate}, {width_m} nas
+    linhas e títulos dos slides com dados do KML atual."""
+    inclusion_rates = [z.rate for z in kml.zones if z.rate > 0]
+    fmt = {
+        "n_zones": len(inclusion_rates),
+        "min_rate": min(inclusion_rates) if inclusion_rates else 0.0,
+        "max_rate": max(inclusion_rates) if inclusion_rates else 0.0,
+        "width_m": width_m,
+    }
+    out: list[dict[str, object]] = []
+    for s in slides_template:
+        out.append(
+            {
+                "title": str(s["title"]).format(**fmt),
+                "lines": [str(line).format(**fmt) for line in s["lines"]],  # type: ignore[union-attr]
+                "duration_s": s["duration_s"],
+            }
+        )
+    return out
+
+
 def _draw_intro_slide(
     screen: pygame.Surface,
     title_font: pygame.font.Font,
@@ -537,8 +561,11 @@ def run(
     idx = 0
     report_lines: list[str] | None = None
 
-    # Estado da introdução (slides exibidos enquanto pausado, antes da simulação)
-    intro_slides = t(lang, "intro_slides") if start_paused else []
+    # Estado da introdução (slides exibidos enquanto pausado, antes da simulação).
+    # Placeholders nas linhas dos slides são preenchidos com dados do KML atual.
+    intro_slides = _format_intro_slides(
+        t(lang, "intro_slides"), kml, width_m
+    ) if start_paused else []
     intro_idx = 0
     intro_slide_start_ms = pygame.time.get_ticks() if intro_slides else 0
 
