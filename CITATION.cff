@@ -26,11 +26,9 @@ keywords:
   - "boustrophedon"
   - "IDW interpolation"
 abstract: >-
-  Simulador em Python que reproduz o comportamento de um operador humano
-  dirigindo um trator com distribuidor de discos durante uma operação de
-  aplicação em taxa variável (VRA). Lê zonas de manejo de um arquivo KML
-  do Google Earth, simula a trajetória boustrofédica com cabeceira para
-  talhões irregulares, modula a velocidade pelo declive do terreno e
-  reporta a massa efetivamente aplicada por zona em comparação com a
-  prescrição planejada. Trabalho de pesquisa de Edson Casagrande no
-  programa de pós-graduação em Engenharia de Computação da POLI/USP.
+  Simulador em Python da aplicação em taxa variável (VRA) com zonas de
+  manejo lidas de um arquivo KML do Google Earth. Calcula a massa
+  aplicada por zona e compara com a prescrição planejada. Trabalho de
+  pesquisa de Edson Casagrande no programa de pós-graduação em
+  Engenharia de Computação da Escola Politécnica da USP (POLI/USP),
+  sob orientação do Prof. Carlos Eduardo Cugnasca.
