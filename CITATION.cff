@@ -9,12 +9,12 @@ type: software
 version: "1.0.0"
 date-released: "2026-04-29"
 license: MIT
-doi: "10.5281/zenodo.19893499"
+doi: "10.5281/zenodo.19893498"
 url: "https://github.com/edcasag/VRA_Simulador"
 repository-code: "https://github.com/edcasag/VRA_Simulador"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.19893499"
+    value: "10.5281/zenodo.19893498"
     description: "Concept DOI (sempre aponta para a última versão do software no Zenodo)"
 keywords:
   - "variable rate application"

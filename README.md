@@ -1,12 +1,14 @@
 # VRA_Simulador
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19893499.svg)](https://doi.org/10.5281/zenodo.19893499)
+[![DOI](https://zenodo.org/badge/1224081407.svg)](https://doi.org/10.5281/zenodo.19893498)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/downloads/)
 
 Simulador em Python da aplicação em taxa variável (VRA) com zonas de manejo lidas de um KML do Google Earth. Reproduz o comportamento de um operador humano dirigindo um trator com distribuidor de discos: faz cabeceira em talhões irregulares, contorna construções, modula a velocidade pelo declive e reporta a massa efetivamente aplicada por zona em comparação com a prescrição planejada.
 
 Acompanha a dissertação de mestrado de Edson Casagrande na Escola Politécnica da USP (POLI/USP), orientação Prof. Carlos Eduardo Cugnasca.
+
+> **Veja também**: [VRA_Controlador](https://github.com/edcasag/VRA_Controlador) — POC complementar em ESP32 (DOI [10.5281/zenodo.19922431](https://doi.org/10.5281/zenodo.19922431)). O Python simula a parte algorítmica idealizada (aplicação instantânea da dose-alvo); o ESP32 cobre a física do atuador (PID, planta de 1ª ordem, saturação por vazão máxima). Paridade numérica bit-a-bit validada em 2010 fixes do ensaio A/B/C/D.
 
 ![Captura do simulador rodando o Sítio Palmar](assets/screenshot_palmar.png)
 
@@ -168,7 +170,7 @@ Em artigos acadêmicos, use o DOI permanente do Zenodo:
 
 ```
 Casagrande, E. (2026). VRA_Simulador (v1.0.0). Zenodo.
-https://doi.org/10.5281/zenodo.19893499
+https://doi.org/10.5281/zenodo.19893498
 ```
 
 Ou via BibTeX:
@@ -180,8 +182,8 @@ Ou via BibTeX:
   year         = 2026,
   publisher    = {Zenodo},
   version      = {v1.0.0},
-  doi          = {10.5281/zenodo.19893499},
-  url          = {https://doi.org/10.5281/zenodo.19893499}
+  doi          = {10.5281/zenodo.19893498},
+  url          = {https://doi.org/10.5281/zenodo.19893498}
 }
 ```
 
@@ -205,6 +207,8 @@ GitHub: [@edcasag](https://github.com/edcasag)
 VRA_Simulador is a Python simulator of variable-rate fertilizer application based on management zones read from a Google Earth KML. It reproduces what a human operator does when driving a tractor with a disc spreader: traces a perimeter pass on irregular fields, drives around buildings, modulates speed by terrain slope, and reports the actual mass applied per zone versus the prescribed amount.
 
 It accompanies the master's dissertation by Edson Casagrande at the Polytechnic School of the University of São Paulo (POLI/USP), under Prof. Carlos Eduardo Cugnasca.
+
+> **See also**: [VRA_Controlador](https://github.com/edcasag/VRA_Controlador) — complementary ESP32 POC (DOI [10.5281/zenodo.19922431](https://doi.org/10.5281/zenodo.19922431)). Python models the idealized algorithmic side (instant dose application); ESP32 covers the physical actuator (PID, first-order plant, max-flow saturation). Bit-for-bit numerical parity validated on 2010 fixes of the A/B/C/D experiment.
 
 ### Quick install
 
@@ -250,7 +254,7 @@ Each zone reports planned vs applied mass (kg), error %, and coverage %. A total
 
 ```
 Casagrande, E. (2026). VRA_Simulador (v1.0.0). Zenodo.
-https://doi.org/10.5281/zenodo.19893499
+https://doi.org/10.5281/zenodo.19893498
 ```
 
 ### License
