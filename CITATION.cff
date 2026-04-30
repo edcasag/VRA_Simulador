@@ -6,8 +6,8 @@ authors:
     given-names: Edson
     affiliation: "Escola Politécnica, Universidade de São Paulo (POLI/USP)"
 type: software
-version: "1.0.0"
-date-released: "2026-04-29"
+version: "1.0.1"
+date-released: "2026-04-30"
 license: MIT
 doi: "10.5281/zenodo.19893498"
 url: "https://github.com/edcasag/VRA_Simulador"
