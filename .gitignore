@@ -18,3 +18,7 @@ docs/
 
 # Build do PyInstaller (caso seja adicionado no futuro)
 *.spec
+
+# Build do PyInstaller (dist_ship/) e ZIPs publicados
+dist_ship/
+*.zip
