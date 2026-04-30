@@ -138,6 +138,8 @@ Quando duas zonas de inclusão se sobrepõem, **vence a de menor área** (a "sub
 | `data/talhao_completo.kml` | 7 zonas retangulares tilando a escala 50–100 kg/ha | Demonstração da legenda de cores |
 | `data/Sitio Palmar.kml` | Talhão real do autor, 14 vértices irregulares, 6 zonas de inclusão, 1 polígono de exclusão (Sede), 2 círculos (cupins/pedras), 7 amostras IDW | Validação em campo real, demonstração da Estratégia B + cabeceira |
 
+![Simulador rodando o ensaio A/B/C/D em andamento: 4 zonas com doses 90/75/60/100 kg/ha, painel de telemetria com posição, velocidade, dose-alvo e cobertura em tempo real](assets/simulador_vra_1.jpg)
+
 ## Lendo o relatório
 
 Ao final da simulação, pressione **ESPAÇO** para abrir o painel central com o relatório por zona. O CSV equivalente é salvo em `docs/relatorio_erro.csv`. Colunas:
@@ -153,6 +155,8 @@ Ao final da simulação, pressione **ESPAÇO** para abrir o painel central com o
 | `Cobertura %` | Fração da área da zona varrida pelo swath (pode passar de 100% por sobreposição realista nas bordas) |
 
 A linha **Total** agrega todas as zonas (somatório de planejado e aplicado, e erro % geral da operação).
+
+![Painel de relatório do ensaio A/B/C/D ao fim da simulação: 4 zonas com erros menores que 0,33% e cobertura entre 98,6% e 115,2%](assets/simulador_vra_2.jpg)
 
 > **Nota.** Os resultados são aproximados. A operação manual real do trator é mais eficiente. O simulador é uma ferramenta didática que captura efeitos de borda e geometria, não um substituto da realidade de campo.
 
@@ -249,6 +253,8 @@ Polygon names follow `Label=Rate` for inclusion zones (e.g., `Good=100`), `Label
 ### Report
 
 Each zone reports planned vs applied mass (kg), error %, and coverage %. A total line aggregates the entire field. **Note:** results are approximate; real manual tractor operation is more efficient. The simulator is a didactic tool that captures geometric and boundary effects.
+
+![Final report panel for the A/B/C/D experiment: 4 zones with errors under 0.33% and coverage between 98.6% and 115.2%](assets/vra_simulator_2.jpg)
 
 ### How to cite
 
