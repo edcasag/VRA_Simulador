@@ -1,6 +1,6 @@
 """Strings PT/EN do simulador VRA.
 
-Permite gerar imagens/relatórios em português (default, para a dissertação)
+Permite gerar imagens/relatórios em português (default, para o artigo SBIAGRO 2025)
 ou inglês (para o artigo CEA), via argumento --lang em main.py.
 """
 

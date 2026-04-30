@@ -1,4 +1,4 @@
-"""Parser KML conforme convenções da Tab. 4 (cap 6 §6.3 da dissertação).
+"""Parser KML conforme convenções da Tab. 4 (artigo SBIAGRO 2025).
 
 Lê features de um arquivo KML do Google Earth e separa em 4 categorias:
 - Field: polígono-base do talhão (`Field=Rate`)

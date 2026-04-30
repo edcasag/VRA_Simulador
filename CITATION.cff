@@ -32,5 +32,5 @@ abstract: >-
   do Google Earth, simula a trajetória boustrofédica com cabeceira para
   talhões irregulares, modula a velocidade pelo declive do terreno e
   reporta a massa efetivamente aplicada por zona em comparação com a
-  prescrição planejada. Acompanha a dissertação de mestrado de Edson
-  Casagrande na POLI/USP.
+  prescrição planejada. Trabalho de pesquisa de Edson Casagrande no
+  programa de pós-graduação em Engenharia de Computação da POLI/USP.

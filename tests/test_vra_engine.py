@@ -1,6 +1,6 @@
 """Testes do motor VRA: cobre lookup por zona, exclusão circular, IDW.
 
-Reproduz o ensaio integrado A/B/C/D da Tab. 6 do cap 7 §7.3 da dissertação.
+Reproduz o ensaio integrado A/B/C/D da Tab. 6 do artigo SBIAGRO 2025.
 """
 
 from __future__ import annotations

@@ -65,7 +65,7 @@ def parse_args() -> argparse.Namespace:
         choices=["pt", "en"],
         default="pt",
         help="Language for the on-screen UI, the in-window report panel and the "
-        "CSV column headers. pt = Portuguese (default, used by the dissertation); "
+        "CSV column headers. pt = Portuguese (default, used by the SBIAGRO 2025 paper); "
         "en = English (used by the CEA paper).",
     )
     p.add_argument(

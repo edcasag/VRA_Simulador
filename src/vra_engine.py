@@ -1,6 +1,6 @@
 """Motor VRA: calcula a dose-alvo (kg/ha) numa coordenada GNSS arbitrária.
 
-Hierarquia de decisão (cap 6 §6.3 da dissertação):
+Hierarquia de decisão (artigo SBIAGRO 2025):
 1. Exclusão circular (`Label=0:Radius`) → 0
 2. Inclusão circular (`Label=Rate:Radius`, Rate>0) → Rate
 3. Polígono de exclusão (`Label=0`) → 0
