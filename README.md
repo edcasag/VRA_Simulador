@@ -146,6 +146,8 @@ python -m src.main data/ensaio_abcd.kml --lang en
 python -m src.main "data/Sitio Palmar.kml"
 ```
 
+![Final report panel for the A/B/C/D experiment](assets/vra_simulator_2.jpg)
+
 ### License
 
 [MIT](LICENSE).
