@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+title: "VRA_Simulador — Simulador de Aplicação em Taxa Variável"
+message: "Para citar este software, utilize os metadados abaixo."
+authors:
+  - family-names: Casagrande
+    given-names: Edson
+    affiliation: "Escola Politécnica, Universidade de São Paulo (POLI/USP)"
+type: software
+version: "1.0.3"
+date-released: "2026-04-30"
+license: MIT
+doi: "10.5281/zenodo.19893498"
+url: "https://github.com/edcasag/VRA_Simulador"
+repository-code: "https://github.com/edcasag/VRA_Simulador"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.19893498"
+    description: "Concept DOI (sempre aponta para a última versão do software no Zenodo)"
+keywords:
+  - "variable rate application"
+  - "VRA"
+  - "precision agriculture"
+  - "agricultura familiar"
+  - "Google Earth"
+  - "KML"
+  - "boustrophedon"
+  - "IDW interpolation"
+abstract: >-
+  Simulador em Python da aplicação em taxa variável (VRA) com zonas de
+  manejo lidas de um arquivo KML do Google Earth. Calcula a massa
+  aplicada por zona e compara com a prescrição planejada. Trabalho de
+  pesquisa de Edson Casagrande no programa de pós-graduação em
+  Engenharia de Computação da Escola Politécnica da USP (POLI/USP),
+  sob orientação do Prof. Carlos Eduardo Cugnasca.

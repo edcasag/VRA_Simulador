@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Ensaio integrado A/B/C/D — Tab. 6 cap 7</name>
+  <description>Quatro zonas adjacentes 100×100 m (1 ha cada), doses do ensaio reportado no §7.3.</description>
+
+  <Placemark>
+    <name>A=90</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.499099,0
+      -47.499025,-22.499099,0
+      -47.499025,-22.498198,0
+      -47.500000,-22.498198,0
+      -47.500000,-22.499099,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>B=75</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.499025,-22.499099,0
+      -47.498050,-22.499099,0
+      -47.498050,-22.498198,0
+      -47.499025,-22.498198,0
+      -47.499025,-22.499099,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>C=60</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.500000,-22.500000,0
+      -47.499025,-22.500000,0
+      -47.499025,-22.499099,0
+      -47.500000,-22.499099,0
+      -47.500000,-22.500000,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+  <Placemark>
+    <name>D=100</name>
+    <Polygon><outerBoundaryIs><LinearRing><coordinates>
+      -47.499025,-22.500000,0
+      -47.498050,-22.500000,0
+      -47.498050,-22.499099,0
+      -47.499025,-22.499099,0
+      -47.499025,-22.500000,0
+    </coordinates></LinearRing></outerBoundaryIs></Polygon>
+  </Placemark>
+
+</Document>
+</kml>

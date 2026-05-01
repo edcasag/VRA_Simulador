@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+*.egg-info/
+build/
+dist/
+
+# Saídas geradas pelo simulador (snapshots PNG, CSV de relatório)
+docs/
+
+# Vídeos da apresentação
+*.mp4
+
+# Build do PyInstaller (caso seja adicionado no futuro)
+*.spec
+
+# Build do PyInstaller (dist_ship/) e ZIPs publicados
+dist_ship/
+*.zip
