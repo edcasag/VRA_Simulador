@@ -1,22 +1,20 @@
-"""Localiza as pastas externas data/ e assets/ tanto em modo script quanto
-empacotado via PyInstaller.
+"""Localiza as pastas data/ e assets/ de forma uniforme em dev e em bundle.
 
-- Modo script (dev): assume que data/ e assets/ são irmãos de src/, ou seja,
-  ficam em ../data e ../assets relativos a este arquivo.
-- Modo .exe (PyInstaller --onefile): sys.frozen é True; data/ e assets/ ficam
-  ao lado do executável (sys.executable.parent).
+Em modo script, `Path(__file__).resolve().parent.parent` aponta para `_python/`
+e DATA_DIR/ASSETS_DIR resolvem para os arquivos versionados no repositório.
+Em bundle PyInstaller, o mesmo caminho resolve para a pasta MEIPASS de
+extração temporária — o `.spec` deve declarar `datas=[('data', 'data'),
+('assets', 'assets')]` para que os arquivos sejam bundleados na mesma posição
+relativa.
 """
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 
 def app_dir() -> Path:
-    """Raiz da aplicação. _python/ em modo dev; pasta do .exe em bundle."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
+    """Raiz da aplicação. _python/ em dev; MEIPASS em bundle."""
     return Path(__file__).resolve().parent.parent
 
 
