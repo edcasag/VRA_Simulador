@@ -37,7 +37,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     usuário fechar a janela sem confirmar."""
     root = tk.Tk()
     root.title("VRA_Simulador")
-    root.geometry("620x880")
+    root.geometry("620x720")
     root.resizable(False, False)
     try:
         ttk.Style().theme_use("vista" if sys.platform == "win32" else "clam")
@@ -151,15 +151,13 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
         ttk.Radiobutton(
             main_frame, text=label, variable=mode_var, value=value
         ).pack(anchor="w", padx=20, pady=1)
-    # Espaço final
-    ttk.Label(main_frame, text="").pack()
 
     # Método de prescrição (Zonas vs IDW puro) — comparação sugerida pelo orientador
     ttk.Label(
         main_frame,
         text="Método de prescrição / Prescription method",
         font=("Segoe UI", 10, "bold"),
-    ).pack(anchor="w")
+    ).pack(anchor="w", pady=(8, 0))
     for value, label in [
         ("zones", "Zonas de Manejo (Google Earth) / Management Zones"),
         ("idw", "IDW puro (somente amostras, sem zonas) / Pure IDW"),
@@ -168,11 +166,10 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
             main_frame, text=label, variable=method_var, value=value
         ).pack(anchor="w", padx=20, pady=1)
 
-    # Slider para a potência N do IDW (range 0.5–5.0). Habilitado apenas
-    # quando IDW está selecionado.
+    # Slider de potência N (0.5-5.0) com value inline + presets na mesma linha.
     idw_row = ttk.Frame(main_frame)
-    idw_row.pack(anchor="w", padx=20, pady=(4, 0), fill="x")
-    idw_label = ttk.Label(idw_row, text="Potência N do IDW: / IDW exponent N:")
+    idw_row.pack(anchor="w", padx=20, pady=(2, 0), fill="x")
+    idw_label = ttk.Label(idw_row, text="Potência N do IDW / IDW exponent N:")
     idw_label.pack(side="left")
     idw_value_label = ttk.Label(idw_row, text=f"{idw_power_var.get():.1f}", width=4)
     idw_value_label.pack(side="left", padx=(8, 0))
@@ -180,29 +177,29 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     def _on_power_change(value: str) -> None:
         idw_value_label.configure(text=f"{float(value):.1f}")
 
+    slider_row = ttk.Frame(main_frame)
+    slider_row.pack(anchor="w", padx=20, pady=(0, 0), fill="x")
     idw_slider = ttk.Scale(
-        main_frame,
+        slider_row,
         from_=0.5,
         to=5.0,
         orient="horizontal",
         variable=idw_power_var,
         command=_on_power_change,
-        length=480,
+        length=320,
     )
-    idw_slider.pack(anchor="w", padx=20, pady=(2, 4))
-    # Atalhos rápidos para os valores didáticos (uniforme / quadrático / olho-de-boi)
-    presets_row = ttk.Frame(main_frame)
-    presets_row.pack(anchor="w", padx=20, pady=(0, 4))
+    idw_slider.pack(side="left")
+    presets_row = slider_row  # presets compartilham a linha do slider
     for preset in (0.5, 1.0, 2.0, 3.0, 5.0):
         ttk.Button(
             presets_row,
             text=f"N={preset:g}",
-            width=6,
+            width=5,
             command=lambda v=preset: (
                 idw_power_var.set(v),
                 idw_value_label.configure(text=f"{v:.1f}"),
             ),
-        ).pack(side="left", padx=2)
+        ).pack(side="left", padx=1)
 
     def _sync_idw_state(*_args: object) -> None:
         state = "normal" if method_var.get() == "idw" else "disabled"
@@ -210,18 +207,18 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
         idw_label.configure(state=state)
         idw_value_label.configure(state=state)
         for child in presets_row.winfo_children():
-            child.configure(state=state)
+            if child is not idw_slider:
+                child.configure(state=state)
 
     method_var.trace_add("write", _sync_idw_state)
     _sync_idw_state()
-    ttk.Label(main_frame, text="").pack()
 
     # Velocidade do trator (real, em km/h)
     ttk.Label(
         main_frame,
         text="Velocidade do trator / Tractor speed",
         font=("Segoe UI", 10, "bold"),
-    ).pack(anchor="w")
+    ).pack(anchor="w", pady=(8, 0))
     for value, label in [
         ("slow", "4 km/h (terreno difícil / heavy terrain)"),
         ("medium", "6 km/h (padrão / standard)"),
@@ -230,14 +227,13 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
         ttk.Radiobutton(
             main_frame, text=label, variable=tractor_speed_var, value=value
         ).pack(anchor="w", padx=20, pady=1)
-    ttk.Label(main_frame, text="").pack()
 
     # Velocidade da simulação (animação)
     ttk.Label(
         main_frame,
         text="Velocidade da animação / Animation speed",
         font=("Segoe UI", 10, "bold"),
-    ).pack(anchor="w")
+    ).pack(anchor="w", pady=(8, 0))
     for value, label in [
         ("slow", "Lenta / Slow (didática)"),
         ("medium", "Média / Medium"),

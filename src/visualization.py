@@ -32,7 +32,7 @@ from .i18n import t
 from .kml_parser import KmlData, SamplePoint
 from .terrain import TerrainParams, altitude, contour_lines
 from .tractor_sim import TractorSample
-from .vra_engine import IdwParams, dose_at, dose_at_idw_pure
+from .vra_engine import IdwParams, dose_at, dose_at_idw_pure, point_in_polygon
 
 # ---------- Colormap dinâmico ----------
 # Paleta âncora (verde escuro -> vermelho escuro). Os stops do colormap
@@ -224,6 +224,7 @@ def _draw_idw_grid(
     vp: Viewport,
     colormap: Colormap,
     grid_n: int = 200,
+    field_coords: list[tuple[float, float]] | None = None,
 ) -> None:
     """Renderiza o mapa teórico do IDW como grade colorida no painel esquerdo.
 
@@ -232,10 +233,28 @@ def _draw_idw_grid(
     redimensionada na viewport. Evidencia o **efeito olho-de-boi**: círculos
     concêntricos de cor em torno de cada amostra, com gradiente determinado
     por N (params.power).
+
+    Para a renderização teórica usa um raio de busca grande o suficiente para
+    cobrir o bbox inteiro, evitando os "círculos" artificiais ao redor de
+    cada amostra que apareciam quando params.radius_m era pequeno em relação
+    ao tamanho do talhão. O raio configurado pelo usuário continua valendo
+    durante a simulação real (deposição do trator).
+
+    Quando `field_coords` é fornecido, células fora do polígono do talhão
+    ficam no cinza de fundo (clipping pelas bordas reais do `Field`).
     """
     xmin, ymin, xmax, ymax = bbox
     grid_surf = pygame.Surface((grid_n, grid_n))
     grid_surf.fill(GRAY_BG)
+    # Raio de visualização: cobre o bbox inteiro para a interpolação ser
+    # contínua em todo o talhão. Usa max() para preservar o raio do usuário
+    # se ele for ainda maior (caso atípico).
+    bbox_diag = math.hypot(xmax - xmin, ymax - ymin)
+    viz_params = IdwParams(
+        power=params.power,
+        radius_m=max(params.radius_m, bbox_diag * 2.0),
+        d_min_m=params.d_min_m,
+    )
     dx = (xmax - xmin) / max(grid_n - 1, 1)
     dy = (ymax - ymin) / max(grid_n - 1, 1)
     for j in range(grid_n):
@@ -243,7 +262,9 @@ def _draw_idw_grid(
         y = ymax - j * dy
         for i in range(grid_n):
             x = xmin + i * dx
-            d = dose_at_idw_pure(x, y, samples, params)
+            if field_coords is not None and not point_in_polygon(x, y, field_coords):
+                continue  # fora do talhão: mantém GRAY_BG do fill inicial
+            d = dose_at_idw_pure(x, y, samples, viz_params)
             grid_surf.set_at((i, j), colormap.color_for_dose_smooth(d))
     # Blita redimensionado na área útil da viewport (respeitando a margem)
     target_w = vp.rect.width - 2 * vp.margin_px
@@ -625,7 +646,13 @@ def run(
         # Mapa teórico do IDW: grade colorida com gradiente suave que mostra
         # o efeito olho-de-boi (anéis concêntricos em torno de cada amostra).
         _draw_idw_grid(
-            static_left, bbox, idw_samples, idw_params, vp_left, colormap
+            static_left,
+            bbox,
+            idw_samples,
+            idw_params,
+            vp_left,
+            colormap,
+            field_coords=kml.field_polygon.coords_xy if kml.field_polygon else None,
         )
         # Contorno do talhão por referência visual (sem pintar)
         if kml.field_polygon:
