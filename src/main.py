@@ -8,6 +8,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -346,7 +347,14 @@ def main() -> None:
     # dos polígonos de inclusão) com o N escolhido pelo usuário.
     if args.method == "idw":
         idw_samples = centroids_from_zones(kml)
-        idw_params = IdwParams(power=args.idw_power, radius_m=args.idw_radius_m)
+        # Casa o raio efetivo do IDW com o tamanho do talhão para que pontos
+        # longe das amostras (cantos do Sítio Palmar p. ex.) ainda recebam
+        # uma interpolação válida em vez de 0 (que pintaria cinza). O flag
+        # --idw-radius-m continua sendo aceito para experimentos didáticos
+        # de truncamento (raio < bbox_diag).
+        bbox_diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+        eff_radius = max(args.idw_radius_m, bbox_diag * 2.0)
+        idw_params = IdwParams(power=args.idw_power, radius_m=eff_radius)
 
         def dose_fn(x: float, y: float) -> float:
             return dose_at_idw_pure(x, y, idw_samples, idw_params)
