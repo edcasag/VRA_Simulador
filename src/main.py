@@ -25,6 +25,7 @@ from .vra_engine import (
     centroids_from_zones,
     dose_at,
     dose_at_idw_pure,
+    grid_samples_from_zones,
 )
 
 
@@ -134,6 +135,18 @@ def parse_args() -> argparse.Namespace:
         help=f"IDW search radius in meters (default: {DEFAULT_IDW_RADIUS_M:g}). "
         "Samples beyond this distance do not contribute to the interpolated "
         "rate. Ignored when --method=zones.",
+    )
+    p.add_argument(
+        "--idw-grid-m",
+        type=float,
+        default=0.0,
+        help="Grid spacing (m) for densifying samples within each zone. "
+        "0 (default) = use only one centroid per zone (sparse, the case "
+        "that produces big bull's-eyes with low N). Positive values (e.g. "
+        "20, 10, 5) sample a grid of points inside each polygon labeled "
+        "with the zone's rate, mimicking a real GIS soil-sampling campaign. "
+        "With smaller spacing, IDW converges visually toward the zones "
+        "method itself. Ignored when --method=zones.",
     )
     p.add_argument(
         "--tractor-speed-kmh",
@@ -346,7 +359,10 @@ def main() -> None:
     # 'zones' usa a hierarquia padrão; 'idw' usa apenas amostras (centroides
     # dos polígonos de inclusão) com o N escolhido pelo usuário.
     if args.method == "idw":
-        idw_samples = centroids_from_zones(kml)
+        if args.idw_grid_m > 0:
+            idw_samples = grid_samples_from_zones(kml, args.idw_grid_m)
+        else:
+            idw_samples = centroids_from_zones(kml)
         # Casa o raio efetivo do IDW com o tamanho do talhão para que pontos
         # longe das amostras (cantos do Sítio Palmar p. ex.) ainda recebam
         # uma interpolação válida em vez de 0 (que pintaria cinza). O flag
@@ -359,7 +375,13 @@ def main() -> None:
         def dose_fn(x: float, y: float) -> float:
             return dose_at_idw_pure(x, y, idw_samples, idw_params)
 
-        method_label = f"IDW (N={args.idw_power:g})"
+        if args.idw_grid_m > 0:
+            method_label = (
+                f"IDW (N={args.idw_power:g}, grid={args.idw_grid_m:g} m, "
+                f"{len(idw_samples)} amostras)"
+            )
+        else:
+            method_label = f"IDW (N={args.idw_power:g}, {len(idw_samples)} centroides)"
     else:
         idw_samples = []
         idw_params = IdwParams()
@@ -373,7 +395,12 @@ def main() -> None:
     # consecutivas sobrescrevam snapshots/CSV uns dos outros — facilita a
     # comparação posterior na tese.
     if args.method == "idw":
-        method_subdir = f"idw_p{args.idw_power:g}".replace(".", "_")
+        if args.idw_grid_m > 0:
+            method_subdir = (
+                f"idw_p{args.idw_power:g}_grid{args.idw_grid_m:g}m".replace(".", "_")
+            )
+        else:
+            method_subdir = f"idw_p{args.idw_power:g}_centroides".replace(".", "_")
     else:
         method_subdir = "zones"
     docs_dir = args.docs_dir / method_subdir

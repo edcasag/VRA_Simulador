@@ -22,6 +22,7 @@ from src.vra_engine import (
     IdwParams,
     centroids_from_zones,
     dose_at_idw_pure,
+    grid_samples_from_zones,
     polygon_centroid,
 )
 
@@ -111,6 +112,99 @@ def test_centroids_from_zones_amostras_sao_internas_aos_poligonos(
         zone = next(z for z in ensaio.zones if z.label == s.label)
         assert point_in_polygon(s.x, s.y, zone.coords_xy), (
             f"Centroide da zona {s.label} caiu fora do polígono"
+        )
+
+
+# ---------- grid_samples_from_zones ----------
+
+
+def test_grid_spacing_zero_equivale_a_centroides(ensaio: KmlData) -> None:
+    grid = grid_samples_from_zones(ensaio, spacing_m=0)
+    centroids = centroids_from_zones(ensaio)
+    assert len(grid) == len(centroids)
+    for g, c in zip(sorted(grid, key=lambda s: s.label),
+                    sorted(centroids, key=lambda s: s.label)):
+        assert g.label == c.label
+        assert g.rate == c.rate
+        assert g.x == pytest.approx(c.x)
+        assert g.y == pytest.approx(c.y)
+
+
+def test_grid_aumenta_amostras_em_zona_grande(ensaio: KmlData) -> None:
+    # Cada zona do ensaio A/B/C/D tem 1 ha (100 m × 100 m). Com grid 25 m,
+    # esperamos pelo menos 16 pontos por zona (4×4 grid mínimo dentro do
+    # quadrado de 100 m).
+    grid = grid_samples_from_zones(ensaio, spacing_m=25)
+    by_label: dict[str, int] = {}
+    for s in grid:
+        by_label[s.label] = by_label.get(s.label, 0) + 1
+    assert sorted(by_label) == ["A", "B", "C", "D"]
+    for lbl, n in by_label.items():
+        assert n >= 16, f"Zona {lbl}: esperado >=16 amostras, obteve {n}"
+
+
+def test_grid_amostras_herdam_a_dose_da_zona(ensaio: KmlData) -> None:
+    grid = grid_samples_from_zones(ensaio, spacing_m=20)
+    expected = {"A": 90, "B": 75, "C": 60, "D": 100}
+    for s in grid:
+        assert s.rate == pytest.approx(expected[s.label]), (
+            f"Amostra {s.label}: dose esperada {expected[s.label]}, obtida {s.rate}"
+        )
+
+
+def test_grid_amostras_dentro_dos_poligonos(ensaio: KmlData) -> None:
+    from src.vra_engine import point_in_polygon
+
+    grid = grid_samples_from_zones(ensaio, spacing_m=20)
+    for s in grid:
+        zone = next(z for z in ensaio.zones if z.label == s.label)
+        assert point_in_polygon(s.x, s.y, zone.coords_xy), (
+            f"Amostra ({s.x:.1f}, {s.y:.1f}) com label {s.label} caiu fora do polígono"
+        )
+
+
+def test_grid_zona_pequena_recebe_pelo_menos_centroide() -> None:
+    # Zona com bbox 5 m × 5 m e grid 50 m: nenhum ponto do grid cabe dentro.
+    # Espera-se fallback para 1 amostra (o centroide).
+    from src.kml_parser import KmlData, Polygon
+
+    tiny_zone = Polygon(
+        label="TinyZone",
+        rate=42.0,
+        coords_xy=[(0, 0), (5, 0), (5, 5), (0, 5)],
+        area_m2=25.0,
+    )
+    kml = KmlData(
+        field_polygon=None,
+        zones=[tiny_zone],
+        circles=[],
+        samples=[],
+        origin_lat=0.0,
+        origin_lon=0.0,
+    )
+    grid = grid_samples_from_zones(kml, spacing_m=50)
+    assert len(grid) == 1
+    assert grid[0].rate == 42.0
+    assert grid[0].label == "TinyZone"
+
+
+def test_grid_idw_converge_para_zonas_quando_denso(ensaio: KmlData) -> None:
+    # Argumento central da tese: IDW com grid denso converge para zonas.
+    # Em pontos longe da fronteira, dose IDW(grid 5m) ≈ rate da zona que
+    # contém o ponto.
+    grid = grid_samples_from_zones(ensaio, spacing_m=5)
+    params = IdwParams(power=2.0, radius_m=500)
+    expected = {"A": 90, "B": 75, "C": 60, "D": 100}
+    for zone in ensaio.zones:
+        if zone.rate <= 0:
+            continue
+        cx = sum(p[0] for p in zone.coords_xy) / len(zone.coords_xy)
+        cy = sum(p[1] for p in zone.coords_xy) / len(zone.coords_xy)
+        dose = dose_at_idw_pure(cx, cy, grid, params)
+        # Tolerância 5%: efeito das zonas vizinhas no centroide.
+        assert dose == pytest.approx(expected[zone.label], rel=0.05), (
+            f"Zona {zone.label}: dose IDW grid-denso ({dose:.2f}) deveria "
+            f"convergir para rate da zona ({expected[zone.label]})"
         )
 
 

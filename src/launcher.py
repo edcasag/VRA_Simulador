@@ -37,7 +37,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     usuário fechar a janela sem confirmar."""
     root = tk.Tk()
     root.title("VRA_Simulador")
-    root.geometry("620x720")
+    root.geometry("620x760")
     root.resizable(False, False)
     try:
         ttk.Style().theme_use("vista" if sys.platform == "win32" else "clam")
@@ -68,6 +68,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     mode_var = tk.StringVar(value="boustrophedon")
     method_var = tk.StringVar(value=getattr(args, "method", None) or "zones")
     idw_power_var = tk.DoubleVar(value=getattr(args, "idw_power", 2.0))
+    idw_grid_var = tk.DoubleVar(value=getattr(args, "idw_grid_m", 0.0))
     tractor_speed_var = tk.StringVar(value="medium")
     sim_speed_var = tk.StringVar(value="medium")
     started = {"ok": False}
@@ -201,6 +202,32 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
             ),
         ).pack(side="left", padx=1)
 
+    # Espaçamento do grid de amostras dentro de cada zona (0 = só centroide).
+    # Spinbox permite que o usuário digite o valor ou use as setas.
+    grid_row = ttk.Frame(main_frame)
+    grid_row.pack(anchor="w", padx=20, pady=(2, 0), fill="x")
+    grid_label = ttk.Label(
+        grid_row,
+        text="Espaçamento do grid (m): / Grid spacing (m):",
+    )
+    grid_label.pack(side="left")
+    grid_spin = ttk.Spinbox(
+        grid_row,
+        from_=0,
+        to=200,
+        increment=5,
+        textvariable=idw_grid_var,
+        width=6,
+    )
+    grid_spin.pack(side="left", padx=(8, 8))
+    grid_hint = ttk.Label(
+        grid_row,
+        text="0 = só centroides, 50 m = grid moderado, 10 m = denso (GIS-like)",
+        foreground="#666",
+        font=("Segoe UI", 8),
+    )
+    grid_hint.pack(side="left")
+
     def _sync_idw_state(*_args: object) -> None:
         state = "normal" if method_var.get() == "idw" else "disabled"
         idw_slider.state(["!disabled"] if state == "normal" else ["disabled"])
@@ -209,6 +236,9 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
         for child in presets_row.winfo_children():
             if child is not idw_slider:
                 child.configure(state=state)
+        grid_label.configure(state=state)
+        grid_spin.configure(state=state)
+        grid_hint.configure(state=state)
 
     method_var.trace_add("write", _sync_idw_state)
     _sync_idw_state()
@@ -292,6 +322,12 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     args.method = method_var.get()
     # Slider devolve float; arredonda para 1 casa para casar com os labels.
     args.idw_power = round(float(idw_power_var.get()), 1)
+    # Spinbox pode vir como string se o usuário digitar; fallback p/ 0 em
+    # caso de valor inválido.
+    try:
+        args.idw_grid_m = max(0.0, float(idw_grid_var.get()))
+    except (tk.TclError, ValueError):
+        args.idw_grid_m = 0.0
     args.tractor_speed_kmh = TRACTOR_SPEED_KMH[tractor_speed_var.get()]
     args.speed_factor = SIM_SPEED_VALUES[sim_speed_var.get()]
     return args

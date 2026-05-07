@@ -281,21 +281,48 @@ def _draw_idw_sample_markers(
     samples: list[SamplePoint],
     vp: Viewport,
     font: pygame.font.Font,
+    max_labeled: int = 20,
 ) -> None:
-    """Marcadores nos centroides usados como amostras (origem das 'ilhas' de
-    cor). Círculo branco com borda preta + rótulo Label=Rate ao lado."""
+    """Marcadores das amostras IDW. Quando há poucas amostras (<=max_labeled),
+    cada uma recebe círculo branco com borda preta + rótulo Label=Rate. Com
+    grid denso (centenas de amostras), poluiria o painel; nesse caso pinta-se
+    pontos pequenos sem rótulo, e o rótulo (com a dose) é colocado uma vez
+    por zona, no centroide do conjunto de amostras com aquele label.
+    """
+    if len(samples) <= max_labeled:
+        for s in samples:
+            sx, sy = vp.world_to_screen(s.x, s.y)
+            pygame.draw.circle(surf, (255, 255, 255), (sx, sy), 5)
+            pygame.draw.circle(surf, (0, 0, 0), (sx, sy), 5, 1)
+            label = f"{s.label or '?'}={int(round(s.rate))}"
+            text = font.render(label, True, (0, 0, 0))
+            bg = pygame.Surface(
+                (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA
+            )
+            bg.fill((255, 255, 255, 200))
+            surf.blit(bg, (sx + 8, sy - text.get_height() // 2 - 1))
+            surf.blit(text, (sx + 11, sy - text.get_height() // 2))
+        return
+    # Grid denso: pontos pequenos sem rótulo + 1 rótulo por zona no centroide.
+    by_label: dict[str, list[SamplePoint]] = {}
+    for s in samples:
+        by_label.setdefault(s.label or "?", []).append(s)
     for s in samples:
         sx, sy = vp.world_to_screen(s.x, s.y)
-        pygame.draw.circle(surf, (255, 255, 255), (sx, sy), 5)
-        pygame.draw.circle(surf, (0, 0, 0), (sx, sy), 5, 1)
-        label = f"{s.label or '?'}={int(round(s.rate))}"
-        text = font.render(label, True, (0, 0, 0))
+        pygame.draw.circle(surf, (40, 40, 40), (sx, sy), 1)
+    for label, group in by_label.items():
+        cx = sum(s.x for s in group) / len(group)
+        cy = sum(s.y for s in group) / len(group)
+        rate = group[0].rate
+        sx, sy = vp.world_to_screen(cx, cy)
+        text_str = f"{label}={int(round(rate))}"
+        text = font.render(text_str, True, (0, 0, 0))
         bg = pygame.Surface(
             (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA
         )
-        bg.fill((255, 255, 255, 200))
-        surf.blit(bg, (sx + 8, sy - text.get_height() // 2 - 1))
-        surf.blit(text, (sx + 11, sy - text.get_height() // 2))
+        bg.fill((255, 255, 255, 220))
+        surf.blit(bg, (sx - text.get_width() // 2 - 3, sy - text.get_height() // 2 - 1))
+        surf.blit(text, (sx - text.get_width() // 2, sy - text.get_height() // 2))
 
 
 def _draw_zone_outlines(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> None:

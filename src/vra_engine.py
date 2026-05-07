@@ -156,6 +156,46 @@ def centroids_from_zones(kml: KmlData) -> list[SamplePoint]:
     return out
 
 
+def grid_samples_from_zones(kml: KmlData, spacing_m: float) -> list[SamplePoint]:
+    """Densifica a amostragem do IDW: cada polígono de inclusão recebe um
+    grid regular de pontos espaçados de `spacing_m` metros, todos rotulados
+    com a dose da zona. Polígonos de exclusão (rate=0) não entram.
+
+    Quando `spacing_m` é pequeno em relação ao tamanho das zonas (ex. 5-10 m
+    em zonas de 1 ha), a densidade local fica comparável a uma campanha real
+    de amostragem de solo em GIS — o IDW deixa de exibir o "olho-de-boi
+    grande" que aparece quando há só um centroide por zona.
+
+    Zonas pequenas demais para conter qualquer ponto do grid recebem ao
+    menos o centroide, garantindo que cada zona contribua com >=1 amostra.
+    """
+    if spacing_m <= 0:
+        return centroids_from_zones(kml)
+    out: list[SamplePoint] = []
+    for z in kml.zones:
+        if z.rate <= 0:
+            continue
+        xs = [p[0] for p in z.coords_xy]
+        ys = [p[1] for p in z.coords_xy]
+        xmin, ymin = min(xs), min(ys)
+        xmax, ymax = max(xs), max(ys)
+        added = 0
+        gy = ymin
+        while gy <= ymax:
+            gx = xmin
+            while gx <= xmax:
+                if point_in_polygon(gx, gy, z.coords_xy):
+                    out.append(SamplePoint(label=z.label, rate=z.rate, x=gx, y=gy))
+                    added += 1
+                gx += spacing_m
+            gy += spacing_m
+        # Fallback: zonas menores que o passo do grid recebem o centroide.
+        if added == 0:
+            cx, cy = polygon_centroid(z.coords_xy)
+            out.append(SamplePoint(label=z.label, rate=z.rate, x=cx, y=cy))
+    return out
+
+
 def dose_at_idw_pure(
     x: float,
     y: float,
