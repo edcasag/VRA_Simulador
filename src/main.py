@@ -18,6 +18,13 @@ from .launcher import run_launcher, should_show_launcher
 from .terrain import GaussianBump, default_params
 from .tractor_sim import boustrophedon, should_use_headland, uniform_random
 from .visualization import run
+from .vra_engine import (
+    DEFAULT_IDW_RADIUS_M,
+    IdwParams,
+    centroids_from_zones,
+    dose_at,
+    dose_at_idw_pure,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -99,6 +106,33 @@ def parse_args() -> argparse.Namespace:
         help="Trajectory style. 'boustrophedon' (default): back-and-forth strips "
         "with U-turns and optional headland pass; 'random': random GPS points, "
         "useful only for visualizing IDW interpolation (no meaningful report).",
+    )
+    p.add_argument(
+        "--method",
+        choices=["zones", "idw"],
+        default="zones",
+        help="Prescription method. 'zones' (default): hierarchical decision over "
+        "polygons / circles / sample points (the proposed method). 'idw': pure "
+        "IDW interpolation over polygon centroids, ignoring inclusion polygons, "
+        "exclusion polygons / circles and Field=Rate. Used for the comparison "
+        "Zones vs IDW suggested by the advisor.",
+    )
+    p.add_argument(
+        "--idw-power",
+        type=float,
+        default=2.0,
+        help="IDW exponent N (weights = 1/d^N). Range 0.5–5.0. N=2.0 (default) "
+        "is the classical inverse-square; N→0.5 yields a near-uniform field "
+        "(global mean); N→5.0 emphasizes the bull's-eye effect (each sample "
+        "dominates its neighborhood). Ignored when --method=zones.",
+    )
+    p.add_argument(
+        "--idw-radius-m",
+        type=float,
+        default=DEFAULT_IDW_RADIUS_M,
+        help=f"IDW search radius in meters (default: {DEFAULT_IDW_RADIUS_M:g}). "
+        "Samples beyond this distance do not contribute to the interpolated "
+        "rate. Ignored when --method=zones.",
     )
     p.add_argument(
         "--tractor-speed-kmh",
@@ -235,10 +269,28 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Validação do N do IDW (range 0.5–5.0 conforme decisão de 2026-05-07)
+    if not (0.5 <= args.idw_power <= 5.0):
+        sys.stderr.write(
+            f"Erro: --idw-power deve estar em [0.5, 5.0]; recebido {args.idw_power}.\n"
+        )
+        sys.exit(1)
+
     kml = parse_kml(args.kml)
     bbox = kml.bbox()
 
     _print_kml_summary(kml, args.lang, args.width_m)
+    if args.method == "idw":
+        n_centroids = sum(1 for z in kml.zones if z.rate > 0)
+        print(
+            f"  Método: IDW puro  |  N (potência) = {args.idw_power:g}  |  "
+            f"raio = {args.idw_radius_m:g} m  |  "
+            f"{n_centroids} amostra(s) em centroides de polígonos"
+        )
+        print()
+    else:
+        print("  Método: Zonas de Manejo (hierárquico)")
+        print()
 
     terrain = default_params(bbox)
     terrain.a = args.decline_x
@@ -259,8 +311,15 @@ def main() -> None:
         terrain.bumps = []
 
     field_coords = kml.field_polygon.coords_xy if kml.field_polygon else None
-    exclusion_polys = [z.coords_xy for z in kml.zones if z.rate == 0]
-    exclusion_circs = [(c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0]
+    # No modo IDW puro, o trator percorre toda a área do bbox sem máscara de
+    # exclusão (passa por sede, lago, pedras) — evidencia o desperdício/risco
+    # que as zonas de exclusão evitam.
+    if args.method == "idw":
+        exclusion_polys: list[list[tuple[float, float]]] = []
+        exclusion_circs: list[tuple[float, float, float]] = []
+    else:
+        exclusion_polys = [z.coords_xy for z in kml.zones if z.rate == 0]
+        exclusion_circs = [(c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0]
 
     if args.headland == "auto":
         headland = should_use_headland(field_coords)
@@ -282,27 +341,61 @@ def main() -> None:
             headland=headland,
         )
 
+    # Função de dose injetada na visualização e no acumulador de cobertura.
+    # 'zones' usa a hierarquia padrão; 'idw' usa apenas amostras (centroides
+    # dos polígonos de inclusão) com o N escolhido pelo usuário.
+    if args.method == "idw":
+        idw_samples = centroids_from_zones(kml)
+        idw_params = IdwParams(power=args.idw_power, radius_m=args.idw_radius_m)
+
+        def dose_fn(x: float, y: float) -> float:
+            return dose_at_idw_pure(x, y, idw_samples, idw_params)
+
+        method_label = f"IDW (N={args.idw_power:g})"
+    else:
+        idw_samples = []
+        idw_params = IdwParams()
+
+        def dose_fn(x: float, y: float) -> float:
+            return dose_at(x, y, kml)
+
+        method_label = "Zonas"
+
+    # Saída em subpasta por método (e por N quando IDW), evitando que rodadas
+    # consecutivas sobrescrevam snapshots/CSV uns dos outros — facilita a
+    # comparação posterior na tese.
+    if args.method == "idw":
+        method_subdir = f"idw_p{args.idw_power:g}".replace(".", "_")
+    else:
+        method_subdir = "zones"
+    docs_dir = args.docs_dir / method_subdir
+    docs_dir.mkdir(parents=True, exist_ok=True)
+
     report = run(
         kml=kml,
         terrain=terrain,
         samples=samples,
-        mode_label="",
+        mode_label=method_label,
         width_m=args.width_m,
         cell_m=args.cell_m,
-        docs_dir=args.docs_dir,
+        docs_dir=docs_dir,
         snapshots_at_pct=(25, 50, 100),
         snapshot_prefix=args.snapshot_prefix,
         speed_factor=args.speed_factor,
         paint_offset_back_m=args.paint_offset_back_m,
         start_paused=args.paused_start,
         lang=args.lang,
+        dose_fn=dose_fn,
+        method=args.method,
+        idw_samples=idw_samples,
+        idw_params=idw_params,
     )
 
     print()
     print(t(args.lang, "report_console_title"))
     print(report.render_console())
     print(f"\n{t(args.lang, 'report_note')}")
-    csv_path = args.docs_dir / "relatorio_erro.csv"
+    csv_path = docs_dir / "relatorio_erro.csv"
     report.write_csv(csv_path)
     print(f"\n{t(args.lang, 'report_saved')}: {csv_path}")
 

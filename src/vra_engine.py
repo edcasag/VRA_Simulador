@@ -1,6 +1,6 @@
 """Motor VRA: calcula a dose-alvo (kg/ha) numa coordenada GNSS arbitrária.
 
-Hierarquia de decisão (artigo SBIAGRO 2025):
+Hierarquia de decisão padrão (`dose_at`, artigo SBIAGRO 2025):
 1. Exclusão circular (`Label=0:Radius`) → 0
 2. Inclusão circular (`Label=Rate:Radius`, Rate>0) → Rate
 3. Polígono de exclusão (`Label=0`) → 0
@@ -8,6 +8,11 @@ Hierarquia de decisão (artigo SBIAGRO 2025):
 5. Pontos de amostra esparsos (IDW p=2 dentro de raio 100 m, cap 5 §5.4 Eq.3)
 6. Zona-base (`Field=Rate`) → Rate
 7. Fora do talhão → 0
+
+Modo de comparação `dose_at_idw_pure`: usa apenas IDW sobre amostras (centroides
+dos polígonos de inclusão) — sem zonas, sem exclusões, sem campo-base. Permite
+contrastar quantitativamente o método de zonas de manejo contra a interpolação
+clássica (Shepard 1968, IDW p=N) sugerida pelo orientador para a tese.
 """
 
 from __future__ import annotations
@@ -106,3 +111,59 @@ def dose_at(x: float, y: float, kml: KmlData, idw_params: IdwParams | None = Non
 def all_target_zones(kml: KmlData) -> list[Polygon]:
     """Lista zonas com Rate > 0 (úteis para relatório de erro por zona)."""
     return [z for z in kml.zones if z.rate > 0]
+
+
+def polygon_centroid(coords: list[tuple[float, float]]) -> tuple[float, float]:
+    """Centroide geométrico (shoelace com sinal de área). Fallback para média
+    simples em polígonos degenerados (área ~ 0)."""
+    n = len(coords)
+    if n < 3:
+        cx = sum(p[0] for p in coords) / max(n, 1)
+        cy = sum(p[1] for p in coords) / max(n, 1)
+        return cx, cy
+    a = 0.0
+    cx = 0.0
+    cy = 0.0
+    for i in range(n):
+        x1, y1 = coords[i]
+        x2, y2 = coords[(i + 1) % n]
+        cross = x1 * y2 - x2 * y1
+        a += cross
+        cx += (x1 + x2) * cross
+        cy += (y1 + y2) * cross
+    a *= 0.5
+    if abs(a) < 1e-9:
+        cx = sum(p[0] for p in coords) / n
+        cy = sum(p[1] for p in coords) / n
+        return cx, cy
+    return cx / (6.0 * a), cy / (6.0 * a)
+
+
+def centroids_from_zones(kml: KmlData) -> list[SamplePoint]:
+    """Extrai amostras IDW dos polígonos de inclusão do KML.
+
+    Cada polígono com `rate > 0` vira um SamplePoint no centroide geométrico,
+    com a taxa do polígono. Polígonos de exclusão (rate=0) NÃO entram — eles
+    representam restrições espaciais, não dose. Permite comparar Zonas de
+    Manejo × IDW puro sem editar o KML.
+    """
+    out: list[SamplePoint] = []
+    for z in kml.zones:
+        if z.rate <= 0:
+            continue
+        cx, cy = polygon_centroid(z.coords_xy)
+        out.append(SamplePoint(label=z.label, rate=z.rate, x=cx, y=cy))
+    return out
+
+
+def dose_at_idw_pure(
+    x: float,
+    y: float,
+    samples: list[SamplePoint],
+    params: IdwParams | None = None,
+) -> float:
+    """Dose IDW pura: interpola apenas das amostras, sem zonas e sem
+    exclusões. Retorna 0 se nenhuma amostra cair no raio."""
+    p = params or IdwParams()
+    value = _idw(x, y, samples, p)
+    return 0.0 if value is None else value

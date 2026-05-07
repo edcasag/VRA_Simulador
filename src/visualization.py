@@ -27,12 +27,12 @@ TRACTOR_IMG_PATH = ASSETS_DIR / "trator.jpg"
 
 HEADER_H = 36
 
-from .coverage_report import CoverageReport
+from .coverage_report import CoverageReport, DoseFn
 from .i18n import t
-from .kml_parser import KmlData
+from .kml_parser import KmlData, SamplePoint
 from .terrain import TerrainParams, altitude, contour_lines
 from .tractor_sim import TractorSample
-from .vra_engine import IdwParams, dose_at
+from .vra_engine import IdwParams, dose_at, dose_at_idw_pure
 
 # ---------- Colormap dinâmico ----------
 # Paleta âncora (verde escuro -> vermelho escuro). Os stops do colormap
@@ -74,7 +74,8 @@ class Colormap:
     stops: list[tuple[float, tuple[int, int, int]]]
 
     def color_for_dose(self, rate: float) -> tuple[int, int, int]:
-        """Cor do stop mais próximo. Doses <= 0.5 retornam cinza (exclusão/fora)."""
+        """Cor do stop mais próximo (modo Zonas: cada zona tem dose discreta,
+        snap para um stop produz cores nítidas). Doses <= 0.5 → cinza."""
         if rate <= 0.5:
             return GRAY_FIELD
         best_rate, best_col = self.stops[0]
@@ -85,6 +86,31 @@ class Colormap:
                 best_rate, best_col = stop_rate, stop_col
                 best_d = d
         return best_col
+
+    def color_for_dose_smooth(self, rate: float) -> tuple[int, int, int]:
+        """Cor interpolada linearmente entre stops (modo IDW: a taxa varia
+        continuamente, snap geraria bandas; interpolação dá gradiente suave
+        e evidencia o efeito olho-de-boi). Doses <= 0.5 → cinza."""
+        if rate <= 0.5:
+            return GRAY_FIELD
+        first_rate, first_col = self.stops[0]
+        last_rate, last_col = self.stops[-1]
+        if rate <= first_rate:
+            return first_col
+        if rate >= last_rate:
+            return last_col
+        for i in range(len(self.stops) - 1):
+            r0, c0 = self.stops[i]
+            r1, c1 = self.stops[i + 1]
+            if r0 <= rate <= r1:
+                span = max(r1 - r0, 1e-9)
+                s = (rate - r0) / span
+                return (
+                    int(c0[0] + s * (c1[0] - c0[0])),
+                    int(c0[1] + s * (c1[1] - c0[1])),
+                    int(c0[2] + s * (c1[2] - c0[2])),
+                )
+        return last_col
 
     def labels(self) -> list[str]:
         """Rótulos dos stops em kg/ha (ex.: '75 kg/ha', '88 kg/ha')."""
@@ -188,6 +214,67 @@ def _draw_zones_filled(
         rpx = vp.cell_size_px(c.radius_m * 2) // 2
         col = (90, 90, 90) if c.rate == 0 else colormap.color_for_dose(c.rate)
         pygame.draw.circle(surf, col, (cx, cy), max(2, rpx))
+
+
+def _draw_idw_grid(
+    surf: pygame.Surface,
+    bbox: tuple[float, float, float, float],
+    samples: list[SamplePoint],
+    params: IdwParams,
+    vp: Viewport,
+    colormap: Colormap,
+    grid_n: int = 200,
+) -> None:
+    """Renderiza o mapa teórico do IDW como grade colorida no painel esquerdo.
+
+    Calcula a dose IDW em cada célula de uma grade grid_n × grid_n sobre o
+    bbox, pinta cada célula com a cor interpolada (gradiente suave) e blita
+    redimensionada na viewport. Evidencia o **efeito olho-de-boi**: círculos
+    concêntricos de cor em torno de cada amostra, com gradiente determinado
+    por N (params.power).
+    """
+    xmin, ymin, xmax, ymax = bbox
+    grid_surf = pygame.Surface((grid_n, grid_n))
+    grid_surf.fill(GRAY_BG)
+    dx = (xmax - xmin) / max(grid_n - 1, 1)
+    dy = (ymax - ymin) / max(grid_n - 1, 1)
+    for j in range(grid_n):
+        # j=0 vira o topo da imagem (y máx do mundo) → tela cresce p/ baixo
+        y = ymax - j * dy
+        for i in range(grid_n):
+            x = xmin + i * dx
+            d = dose_at_idw_pure(x, y, samples, params)
+            grid_surf.set_at((i, j), colormap.color_for_dose_smooth(d))
+    # Blita redimensionado na área útil da viewport (respeitando a margem)
+    target_w = vp.rect.width - 2 * vp.margin_px
+    target_h = vp.rect.height - 2 * vp.margin_px
+    if target_w <= 0 or target_h <= 0:
+        return
+    scaled = pygame.transform.smoothscale(grid_surf, (target_w, target_h))
+    surf.fill((255, 255, 255), vp.rect)
+    surf.blit(scaled, (vp.rect.x + vp.margin_px, vp.rect.y + vp.margin_px))
+
+
+def _draw_idw_sample_markers(
+    surf: pygame.Surface,
+    samples: list[SamplePoint],
+    vp: Viewport,
+    font: pygame.font.Font,
+) -> None:
+    """Marcadores nos centroides usados como amostras (origem das 'ilhas' de
+    cor). Círculo branco com borda preta + rótulo Label=Rate ao lado."""
+    for s in samples:
+        sx, sy = vp.world_to_screen(s.x, s.y)
+        pygame.draw.circle(surf, (255, 255, 255), (sx, sy), 5)
+        pygame.draw.circle(surf, (0, 0, 0), (sx, sy), 5, 1)
+        label = f"{s.label or '?'}={int(round(s.rate))}"
+        text = font.render(label, True, (0, 0, 0))
+        bg = pygame.Surface(
+            (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA
+        )
+        bg.fill((255, 255, 255, 200))
+        surf.blit(bg, (sx + 8, sy - text.get_height() // 2 - 1))
+        surf.blit(text, (sx + 11, sy - text.get_height() // 2))
 
 
 def _draw_zone_outlines(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> None:
@@ -481,8 +568,28 @@ def run(
     paint_offset_back_m: float = 1.0,
     start_paused: bool = False,
     lang: str = "pt",
+    dose_fn: DoseFn | None = None,
+    method: str = "zones",
+    idw_samples: list[SamplePoint] | None = None,
+    idw_params: IdwParams | None = None,
 ) -> CoverageReport:
-    """Executa a visualização. Devolve o CoverageReport ao terminar."""
+    """Executa a visualização. Devolve o CoverageReport ao terminar.
+
+    `dose_fn`: função local que devolve a taxa em (x, y) para o método ativo.
+        Default = `dose_at(x, y, kml)` (modo Zonas, comportamento original).
+    `method`: "zones" ou "idw" — controla a renderização do painel esquerdo
+        (zonas pintadas vs. grade IDW interpolada) e o rótulo do HUD.
+    `idw_samples`, `idw_params`: usados apenas quando method="idw" para
+        renderizar o mapa teórico no painel esquerdo.
+    """
+    # Default backwards-compatible
+    if dose_fn is None:
+        def dose_fn(x: float, y: float) -> float:  # type: ignore[misc]
+            return dose_at(x, y, kml)
+    if idw_samples is None:
+        idw_samples = []
+    if idw_params is None:
+        idw_params = IdwParams()
     pygame.init()
     pygame.display.set_caption(title or t(lang, "header_title"))
     screen = pygame.display.set_mode((1280, 720))
@@ -514,9 +621,22 @@ def run(
     static_left = pygame.Surface((1280, 720))
     static_left.fill((250, 250, 250))
     pygame.draw.rect(static_left, GRAY_BG, left_rect)
-    _draw_zones_filled(static_left, kml, vp_left, colormap)
-    _draw_zone_outlines(static_left, kml, vp_left)
-    _draw_zone_labels(static_left, kml, vp_left, big_font)
+    if method == "idw" and idw_samples:
+        # Mapa teórico do IDW: grade colorida com gradiente suave que mostra
+        # o efeito olho-de-boi (anéis concêntricos em torno de cada amostra).
+        _draw_idw_grid(
+            static_left, bbox, idw_samples, idw_params, vp_left, colormap
+        )
+        # Contorno do talhão por referência visual (sem pintar)
+        if kml.field_polygon:
+            pts = [vp_left.world_to_screen(*p) for p in kml.field_polygon.coords_xy]
+            pygame.draw.polygon(static_left, (60, 60, 60), pts, 2)
+        # Marcadores nas amostras (origens das ilhas de cor)
+        _draw_idw_sample_markers(static_left, idw_samples, vp_left, font)
+    else:
+        _draw_zones_filled(static_left, kml, vp_left, colormap)
+        _draw_zone_outlines(static_left, kml, vp_left)
+        _draw_zone_labels(static_left, kml, vp_left, big_font)
     _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, colormap, lang)
     # Mesma fórmula de altura usada em _draw_legend (line_h * (n + 1) + 12)
     legend_height = 22 * (len(colormap.stops) + 1) + 12
@@ -571,13 +691,20 @@ def run(
 
     paint_step_m = max(0.5, cell_m)  # profundidade longitudinal do retângulo de pintura
 
+    # Modo IDW: a taxa varia continuamente, então a cor de cada retângulo
+    # pintado é interpolada (gradiente suave). Modo Zonas: cada zona tem dose
+    # discreta, mantém o snap para um stop (cores nítidas, uma por zona).
+    color_for_dose_local = (
+        colormap.color_for_dose_smooth if method == "idw" else colormap.color_for_dose
+    )
+
     def _paint_swath(s: TractorSample) -> tuple[float, float]:
         """Pinta um retângulo de paint_step_m (longitudinal) × width_m (perpendicular)
         deslocado paint_offset_back_m atrás do trator (eixo do distribuidor de discos),
         orientado pelo heading. Devolve as coordenadas do centro da pintura."""
         if s.heading is None:
-            d = dose_at(s.x, s.y, kml)
-            color = colormap.color_for_dose(d)
+            d = dose_fn(s.x, s.y)
+            color = color_for_dose_local(d)
             sx, sy = vp_right_local.world_to_screen(s.x, s.y)
             sz = vp_right_local.cell_size_px(paint_step_m)
             pygame.draw.rect(
@@ -593,8 +720,8 @@ def run(
         # Centro da pintura deslocado para trás do trator (no sentido -heading)
         cx = s.x - hx * paint_offset_back_m
         cy = s.y - hy * paint_offset_back_m
-        d = dose_at(cx, cy, kml)
-        color = colormap.color_for_dose(d)
+        d = dose_fn(cx, cy)
+        color = color_for_dose_local(d)
         # Vetor perpendicular (rotação 90°)
         perp_x, perp_y = -hy, hx
         hl = paint_step_m / 2.0
@@ -647,7 +774,17 @@ def run(
                 sim_time = s.t
                 if s.spreading:
                     paint_x, paint_y = _paint_swath(s)
-                    report.update(paint_x, paint_y, s.t if s.v else sim_time, s.v)
+                    # No modo IDW, dose_fn é injetada para que o report
+                    # acumule massa com a taxa interpolada localmente, não a
+                    # rate fixa da zona. No modo zonas, dose_fn equivale a
+                    # zone.rate e o resultado é o mesmo do baseline.
+                    report.update(
+                        paint_x,
+                        paint_y,
+                        s.t if s.v else sim_time,
+                        s.v,
+                        dose_fn=dose_fn,
+                    )
                 # Snapshots
                 pct = int(100 * idx / total)
                 for tgt in snapshots_at_pct:
@@ -709,13 +846,20 @@ def run(
 
         # HUD
         if last_sample is not None:
-            d = dose_at(last_sample.x, last_sample.y, kml)
+            d = dose_fn(last_sample.x, last_sample.y)
             z = altitude(last_sample.x, last_sample.y, terrain)
             if last_sample.v is not None:
                 v_str = f"{last_sample.v * 3.6:.1f} km/h"
             else:
                 v_str = "—"
+            # Rótulo do método (Zonas / IDW (N=…)) abre o HUD para o leitor
+            # da figura saber qual prescrição está ativa.
+            if method == "idw":
+                method_str = f"IDW (N={idw_params.power:g})"
+            else:
+                method_str = t(lang, "hud_method_zones")
             info = {
+                t(lang, "hud_method"): method_str,
                 t(lang, "hud_pos"): f"({last_sample.x:.1f}, {last_sample.y:.1f})",
                 t(lang, "hud_altitude"): f"{z:+.2f} m",
                 t(lang, "hud_speed"): v_str,

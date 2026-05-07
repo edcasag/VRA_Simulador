@@ -37,7 +37,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     usuário fechar a janela sem confirmar."""
     root = tk.Tk()
     root.title("VRA_Simulador")
-    root.geometry("620x680")
+    root.geometry("620x880")
     root.resizable(False, False)
     try:
         ttk.Style().theme_use("vista" if sys.platform == "win32" else "clam")
@@ -66,6 +66,8 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     paused_var = tk.BooleanVar(value=True)
     headland_var = tk.BooleanVar(value=True)
     mode_var = tk.StringVar(value="boustrophedon")
+    method_var = tk.StringVar(value=getattr(args, "method", None) or "zones")
+    idw_power_var = tk.DoubleVar(value=getattr(args, "idw_power", 2.0))
     tractor_speed_var = tk.StringVar(value="medium")
     sim_speed_var = tk.StringVar(value="medium")
     started = {"ok": False}
@@ -152,6 +154,68 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     # Espaço final
     ttk.Label(main_frame, text="").pack()
 
+    # Método de prescrição (Zonas vs IDW puro) — comparação sugerida pelo orientador
+    ttk.Label(
+        main_frame,
+        text="Método de prescrição / Prescription method",
+        font=("Segoe UI", 10, "bold"),
+    ).pack(anchor="w")
+    for value, label in [
+        ("zones", "Zonas de Manejo (Google Earth) / Management Zones"),
+        ("idw", "IDW puro (somente amostras, sem zonas) / Pure IDW"),
+    ]:
+        ttk.Radiobutton(
+            main_frame, text=label, variable=method_var, value=value
+        ).pack(anchor="w", padx=20, pady=1)
+
+    # Slider para a potência N do IDW (range 0.5–5.0). Habilitado apenas
+    # quando IDW está selecionado.
+    idw_row = ttk.Frame(main_frame)
+    idw_row.pack(anchor="w", padx=20, pady=(4, 0), fill="x")
+    idw_label = ttk.Label(idw_row, text="Potência N do IDW: / IDW exponent N:")
+    idw_label.pack(side="left")
+    idw_value_label = ttk.Label(idw_row, text=f"{idw_power_var.get():.1f}", width=4)
+    idw_value_label.pack(side="left", padx=(8, 0))
+
+    def _on_power_change(value: str) -> None:
+        idw_value_label.configure(text=f"{float(value):.1f}")
+
+    idw_slider = ttk.Scale(
+        main_frame,
+        from_=0.5,
+        to=5.0,
+        orient="horizontal",
+        variable=idw_power_var,
+        command=_on_power_change,
+        length=480,
+    )
+    idw_slider.pack(anchor="w", padx=20, pady=(2, 4))
+    # Atalhos rápidos para os valores didáticos (uniforme / quadrático / olho-de-boi)
+    presets_row = ttk.Frame(main_frame)
+    presets_row.pack(anchor="w", padx=20, pady=(0, 4))
+    for preset in (0.5, 1.0, 2.0, 3.0, 5.0):
+        ttk.Button(
+            presets_row,
+            text=f"N={preset:g}",
+            width=6,
+            command=lambda v=preset: (
+                idw_power_var.set(v),
+                idw_value_label.configure(text=f"{v:.1f}"),
+            ),
+        ).pack(side="left", padx=2)
+
+    def _sync_idw_state(*_args: object) -> None:
+        state = "normal" if method_var.get() == "idw" else "disabled"
+        idw_slider.state(["!disabled"] if state == "normal" else ["disabled"])
+        idw_label.configure(state=state)
+        idw_value_label.configure(state=state)
+        for child in presets_row.winfo_children():
+            child.configure(state=state)
+
+    method_var.trace_add("write", _sync_idw_state)
+    _sync_idw_state()
+    ttk.Label(main_frame, text="").pack()
+
     # Velocidade do trator (real, em km/h)
     ttk.Label(
         main_frame,
@@ -229,6 +293,9 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     args.paused_start = paused_var.get()
     args.headland = "auto" if headland_var.get() else "off"
     args.mode = mode_var.get()
+    args.method = method_var.get()
+    # Slider devolve float; arredonda para 1 casa para casar com os labels.
+    args.idw_power = round(float(idw_power_var.get()), 1)
     args.tractor_speed_kmh = TRACTOR_SPEED_KMH[tractor_speed_var.get()]
     args.speed_factor = SIM_SPEED_VALUES[sim_speed_var.get()]
     return args

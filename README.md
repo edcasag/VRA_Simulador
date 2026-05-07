@@ -10,7 +10,11 @@ Trabalho de pesquisa de Edson Casagrande no programa de pós-graduação em Enge
 
 ![Captura do simulador rodando o Sítio Palmar](assets/screenshot_palmar.png)
 
-## Pré-requisitos
+## Executável pré-compilado (Windows)
+
+Para uso rápido, sem instalar Python: `EXE/VRA_Simulador.exe`. Duplo-clique abre o launcher (escolha de KML, método de prescrição, parâmetros de IDW). KMLs e assets estão embutidos no próprio `.exe`.
+
+## Pré-requisitos (modo desenvolvimento)
 
 - Python 3.13 ou superior
 - Sistema operacional: Windows, Linux ou macOS
