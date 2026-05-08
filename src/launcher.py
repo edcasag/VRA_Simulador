@@ -63,12 +63,12 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     # Estado tkinter (mutável, ligado aos widgets)
     kml_var = tk.StringVar(value=initial_kml)
     lang_var = tk.StringVar(value=args.lang or "pt")
-    paused_var = tk.BooleanVar(value=True)
+    paused_var = tk.BooleanVar(value=False)
     headland_var = tk.BooleanVar(value=True)
     mode_var = tk.StringVar(value="boustrophedon")
     method_var = tk.StringVar(value=getattr(args, "method", None) or "zones")
     idw_power_var = tk.DoubleVar(value=getattr(args, "idw_power", 2.0))
-    idw_samples_var = tk.IntVar(value=getattr(args, "idw_samples", 0))
+    idw_grid_var = tk.DoubleVar(value=getattr(args, "idw_grid_m", 0.0))
     tractor_speed_var = tk.StringVar(value="medium")
     sim_speed_var = tk.StringVar(value="medium")
     started = {"ok": False}
@@ -202,28 +202,30 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
             ),
         ).pack(side="left", padx=1)
 
-    # Nº de amostras IDW (didático: cada amostra = um tubo de solo + análise
-    # de laboratório). 0 = só centroides. Distribuídas proporcionalmente à
-    # área de cada zona.
+    # Espaçamento do grid de amostras dentro de cada zona (0 = só centroide).
+    # Spinbox com presets: passo fino nas faixas pequenas para ver a transição
+    # didática; passos maiores nas faixas mais espaçadas.
     grid_row = ttk.Frame(main_frame)
     grid_row.pack(anchor="w", padx=20, pady=(2, 0), fill="x")
     grid_label = ttk.Label(
         grid_row,
-        text="Nº de amostras IDW: / Number of IDW samples:",
+        text="Espaçamento do grid (m): / Grid spacing (m):",
     )
     grid_label.pack(side="left")
+    grid_presets = (
+        "0", "5", "10", "15", "20", "25", "30", "40", "50",
+        "75", "100", "150", "200",
+    )
     grid_spin = ttk.Spinbox(
         grid_row,
-        from_=0,
-        to=2000,
-        increment=10,
-        textvariable=idw_samples_var,
+        values=grid_presets,
+        textvariable=idw_grid_var,
         width=6,
     )
     grid_spin.pack(side="left", padx=(8, 8))
     grid_hint = ttk.Label(
         grid_row,
-        text="0 = só centroides; 50 = pouco; 500 = denso (GIS-like)",
+        text="0 = só centroides; 50 m = grid moderado; 10 m = denso (GIS-like)",
         foreground="#666",
         font=("Segoe UI", 8),
     )
@@ -326,9 +328,9 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     # Spinbox pode vir como string se o usuário digitar; fallback p/ 0 em
     # caso de valor inválido.
     try:
-        args.idw_samples = max(0, int(round(float(idw_samples_var.get()))))
+        args.idw_grid_m = max(0.0, float(idw_grid_var.get()))
     except (tk.TclError, ValueError):
-        args.idw_samples = 0
+        args.idw_grid_m = 0.0
     args.tractor_speed_kmh = TRACTOR_SPEED_KMH[tractor_speed_var.get()]
     args.speed_factor = SIM_SPEED_VALUES[sim_speed_var.get()]
     return args
