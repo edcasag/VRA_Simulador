@@ -19,7 +19,9 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from .kml_parser import KmlData, parse_kml
 from .paths import DATA_DIR
+from .vra_engine import centroids_from_zones, grid_samples_from_zones
 
 SIM_SPEED_VALUES = {"slow": 0.2, "medium": 0.3, "fast": 1.0}
 TRACTOR_SPEED_KMH = {"slow": 4.0, "medium": 6.0, "fast": 8.0}
@@ -223,13 +225,69 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
         width=6,
     )
     grid_spin.pack(side="left", padx=(8, 8))
-    grid_hint = ttk.Label(
+    # Label dinâmico que mostra quantas amostras o método/grid escolhido vai
+    # gerar para o KML atual: "= 6 centroides + 7 externas = 13 amostras".
+    grid_count_label = ttk.Label(
         grid_row,
-        text="0 = só centroides; 50 m = grid moderado; 10 m = denso (GIS-like)",
-        foreground="#666",
-        font=("Segoe UI", 8),
+        text="",
+        foreground="#0066cc",
+        font=("Segoe UI", 9),
     )
-    grid_hint.pack(side="left")
+    grid_count_label.pack(side="left")
+
+    # Cache dos KMLs já parseados (evita reler o XML a cada mudança).
+    kml_cache: dict[str, KmlData] = {}
+
+    def _resolve_kml_path(name: str) -> Path | None:
+        if not name:
+            return None
+        for p in kml_paths:
+            if p.name == name:
+                return p
+        # Caminho explícito digitado pelo usuário
+        candidate = Path(name)
+        return candidate if candidate.exists() else None
+
+    def _update_count(*_args: object) -> None:
+        path = _resolve_kml_path(kml_var.get().strip())
+        if path is None:
+            grid_count_label.configure(text="")
+            return
+        path_key = str(path)
+        if path_key not in kml_cache:
+            try:
+                kml_cache[path_key] = parse_kml(path)
+            except Exception:
+                grid_count_label.configure(text="(KML inválido)")
+                return
+        kml_data = kml_cache[path_key]
+        n_external = len(kml_data.samples)
+        if method_var.get() == "zones":
+            n_zone = sum(1 for z in kml_data.zones if z.rate > 0)
+            label = f"   = {n_zone} centroides"
+        else:
+            try:
+                grid_m = float(idw_grid_var.get())
+            except (ValueError, tk.TclError):
+                grid_m = 0.0
+            if grid_m > 0:
+                samples = grid_samples_from_zones(kml_data, grid_m)
+                n_zone = len(samples)
+                label = f"   = {n_zone} grid"
+            else:
+                samples = centroids_from_zones(kml_data)
+                n_zone = len(samples)
+                label = f"   = {n_zone} centroides"
+        if n_external > 0:
+            total = n_zone + n_external
+            label += f" + {n_external} externas = {total}"
+        grid_count_label.configure(text=label)
+
+    # Atualiza ao mudar KML, método ou espaçamento.
+    kml_var.trace_add("write", _update_count)
+    method_var.trace_add("write", _update_count)
+    idw_grid_var.trace_add("write", _update_count)
+    _update_count()
 
     def _sync_idw_state(*_args: object) -> None:
         state = "normal" if method_var.get() == "idw" else "disabled"

@@ -303,19 +303,23 @@ def _draw_idw_sample_markers(
             surf.blit(bg, (sx + 8, sy - text.get_height() // 2 - 1))
             surf.blit(text, (sx + 11, sy - text.get_height() // 2))
         return
-    # Grid denso: pontos pequenos sem rótulo + 1 rótulo por zona no centroide.
-    by_label: dict[str, list[SamplePoint]] = {}
+    # Grid denso: pontos pequenos sem rótulo + 1 rótulo por (label, rate) no
+    # centroide do grupo. Agrupar por (label, rate) preserva amostras externas
+    # sem label que tenham doses distintas — cada dose única recebe seu
+    # próprio rótulo.
+    by_key: dict[tuple[str, float], list[SamplePoint]] = {}
     for s in samples:
-        by_label.setdefault(s.label or "?", []).append(s)
+        by_key.setdefault((s.label or "", float(s.rate)), []).append(s)
     for s in samples:
         sx, sy = vp.world_to_screen(s.x, s.y)
         pygame.draw.circle(surf, (40, 40, 40), (sx, sy), 1)
-    for label, group in by_label.items():
+    for (label, rate), group in by_key.items():
         cx = sum(s.x for s in group) / len(group)
         cy = sum(s.y for s in group) / len(group)
-        rate = group[0].rate
         sx, sy = vp.world_to_screen(cx, cy)
-        text_str = f"{label}={int(round(rate))}"
+        text_str = (
+            f"{label}={int(round(rate))}" if label else f"{int(round(rate))}"
+        )
         text = font.render(text_str, True, (0, 0, 0))
         bg = pygame.Surface(
             (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA

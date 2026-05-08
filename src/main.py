@@ -371,11 +371,15 @@ def main() -> None:
     if args.method == "idw":
         # --idw-samples (didático) tem precedência sobre --idw-grid-m (avançado).
         if args.idw_samples > 0:
-            idw_samples = samples_from_zones_count(kml, args.idw_samples)
+            zone_samples = samples_from_zones_count(kml, args.idw_samples)
         elif args.idw_grid_m > 0:
-            idw_samples = grid_samples_from_zones(kml, args.idw_grid_m)
+            zone_samples = grid_samples_from_zones(kml, args.idw_grid_m)
         else:
-            idw_samples = centroids_from_zones(kml)
+            zone_samples = centroids_from_zones(kml)
+        # Inclui também as amostras IDW externas do KML (Placemarks com
+        # número solto, fora das zonas) — comparação justa contra zonas,
+        # que também usam essas amostras como fallback hierárquico.
+        idw_samples = zone_samples + list(kml.samples)
         # Casa o raio efetivo do IDW com o tamanho do talhão para que pontos
         # longe das amostras (cantos do Sítio Palmar p. ex.) ainda recebam
         # uma interpolação válida em vez de 0 (que pintaria cinza). O flag
@@ -388,18 +392,25 @@ def main() -> None:
         def dose_fn(x: float, y: float) -> float:
             return dose_at_idw_pure(x, y, idw_samples, idw_params)
 
+        # Composição das amostras: N da zona (centroides ou grid) + M externas.
+        n_zone = len(zone_samples)
+        n_external = len(kml.samples)
         if args.idw_samples > 0:
             method_label = (
-                f"IDW (N={args.idw_power:g}, "
-                f"{len(idw_samples)} amostras alvo {args.idw_samples})"
+                f"IDW N={args.idw_power:g} | {n_zone} grid + "
+                f"{n_external} externas = {n_zone + n_external} amostras"
             )
         elif args.idw_grid_m > 0:
             method_label = (
-                f"IDW (N={args.idw_power:g}, grid={args.idw_grid_m:g} m, "
-                f"{len(idw_samples)} amostras)"
+                f"IDW N={args.idw_power:g} | grid {args.idw_grid_m:g} m: "
+                f"{n_zone} amostras + {n_external} externas = "
+                f"{n_zone + n_external}"
             )
         else:
-            method_label = f"IDW (N={args.idw_power:g}, {len(idw_samples)} centroides)"
+            method_label = (
+                f"IDW N={args.idw_power:g} | {n_zone} centroides + "
+                f"{n_external} externas = {n_zone + n_external} amostras"
+            )
     else:
         idw_samples = []
         idw_params = IdwParams()
@@ -407,7 +418,14 @@ def main() -> None:
         def dose_fn(x: float, y: float) -> float:
             return dose_at(x, y, kml)
 
-        method_label = "Zonas"
+        # Para zonas, "amostras utilizadas" = centroides das zonas com rate>0
+        # + amostras IDW externas (usadas como fallback na hierarquia).
+        n_zone = sum(1 for z in kml.zones if z.rate > 0)
+        n_external = len(kml.samples)
+        method_label = (
+            f"Zonas | {n_zone} centroides + {n_external} externas "
+            f"= {n_zone + n_external} amostras"
+        )
 
     # Saída em subpasta por método (e por N quando IDW), evitando que rodadas
     # consecutivas sobrescrevam snapshots/CSV uns dos outros — facilita a
@@ -450,6 +468,7 @@ def main() -> None:
 
     print()
     print(t(args.lang, "report_console_title"))
+    print(f"  {method_label}")
     print(report.render_console())
     print(f"\n{t(args.lang, 'report_note')}")
     csv_path = docs_dir / "relatorio_erro.csv"
