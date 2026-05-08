@@ -299,7 +299,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
                 child.configure(state=state)
         grid_label.configure(state=state)
         grid_spin.configure(state=state)
-        grid_hint.configure(state=state)
+        grid_count_label.configure(state=state)
 
     method_var.trace_add("write", _sync_idw_state)
     _sync_idw_state()
