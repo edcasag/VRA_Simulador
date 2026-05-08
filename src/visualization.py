@@ -294,7 +294,11 @@ def _draw_idw_sample_markers(
             sx, sy = vp.world_to_screen(s.x, s.y)
             pygame.draw.circle(surf, (255, 255, 255), (sx, sy), 5)
             pygame.draw.circle(surf, (0, 0, 0), (sx, sy), 5, 1)
-            label = f"{s.label or '?'}={int(round(s.rate))}"
+            label = (
+                f"{s.label}={int(round(s.rate))}"
+                if s.label
+                else f"{int(round(s.rate))}"
+            )
             text = font.render(label, True, (0, 0, 0))
             bg = pygame.Surface(
                 (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA
