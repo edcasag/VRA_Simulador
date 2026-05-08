@@ -156,6 +156,33 @@ def centroids_from_zones(kml: KmlData) -> list[SamplePoint]:
     return out
 
 
+def samples_from_zones_count(kml: KmlData, n_total: int) -> list[SamplePoint]:
+    """Densifica a amostragem para aproximadamente `n_total` pontos no total,
+    distribuídos proporcionalmente à área das zonas de inclusão.
+
+    Mais didático que `grid_samples_from_zones` para argumentação na tese:
+    o usuário especifica "quero comparar com 50 amostras" (cada amostra = um
+    tubo de solo + análise de laboratório), em vez de "quero grid de 70 m".
+    Internamente, calcula-se o espaçamento que produziria n_total pontos
+    distribuídos uniformemente por toda a área somada das zonas.
+
+    Como o grid é uniforme, zonas grandes recebem mais pontos
+    automaticamente (zona com 5× a área recebe ~5× as amostras), mantendo
+    a distribuição proporcional à área — equivalente a uma campanha real
+    de amostragem com densidade fixa por hectare.
+
+    Quando n_total <= 0, retorna apenas os centroides (1 por zona).
+    """
+    if n_total <= 0:
+        return centroids_from_zones(kml)
+    zones_with_rate = [z for z in kml.zones if z.rate > 0]
+    total_area = sum(z.area_m2 for z in zones_with_rate)
+    if total_area <= 0:
+        return centroids_from_zones(kml)
+    spacing = math.sqrt(total_area / n_total)
+    return grid_samples_from_zones(kml, spacing)
+
+
 def grid_samples_from_zones(kml: KmlData, spacing_m: float) -> list[SamplePoint]:
     """Densifica a amostragem do IDW: cada polígono de inclusão recebe um
     grid regular de pontos espaçados de `spacing_m` metros, todos rotulados

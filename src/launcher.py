@@ -68,7 +68,7 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     mode_var = tk.StringVar(value="boustrophedon")
     method_var = tk.StringVar(value=getattr(args, "method", None) or "zones")
     idw_power_var = tk.DoubleVar(value=getattr(args, "idw_power", 2.0))
-    idw_grid_var = tk.DoubleVar(value=getattr(args, "idw_grid_m", 0.0))
+    idw_samples_var = tk.IntVar(value=getattr(args, "idw_samples", 0))
     tractor_speed_var = tk.StringVar(value="medium")
     sim_speed_var = tk.StringVar(value="medium")
     started = {"ok": False}
@@ -202,27 +202,28 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
             ),
         ).pack(side="left", padx=1)
 
-    # Espaçamento do grid de amostras dentro de cada zona (0 = só centroide).
-    # Spinbox permite que o usuário digite o valor ou use as setas.
+    # Nº de amostras IDW (didático: cada amostra = um tubo de solo + análise
+    # de laboratório). 0 = só centroides. Distribuídas proporcionalmente à
+    # área de cada zona.
     grid_row = ttk.Frame(main_frame)
     grid_row.pack(anchor="w", padx=20, pady=(2, 0), fill="x")
     grid_label = ttk.Label(
         grid_row,
-        text="Espaçamento do grid (m): / Grid spacing (m):",
+        text="Nº de amostras IDW: / Number of IDW samples:",
     )
     grid_label.pack(side="left")
     grid_spin = ttk.Spinbox(
         grid_row,
         from_=0,
-        to=200,
-        increment=5,
-        textvariable=idw_grid_var,
+        to=2000,
+        increment=10,
+        textvariable=idw_samples_var,
         width=6,
     )
     grid_spin.pack(side="left", padx=(8, 8))
     grid_hint = ttk.Label(
         grid_row,
-        text="0 = só centroides, 50 m = grid moderado, 10 m = denso (GIS-like)",
+        text="0 = só centroides; 50 = pouco; 500 = denso (GIS-like)",
         foreground="#666",
         font=("Segoe UI", 8),
     )
@@ -325,9 +326,9 @@ def run_launcher(args: argparse.Namespace) -> argparse.Namespace | None:
     # Spinbox pode vir como string se o usuário digitar; fallback p/ 0 em
     # caso de valor inválido.
     try:
-        args.idw_grid_m = max(0.0, float(idw_grid_var.get()))
+        args.idw_samples = max(0, int(round(float(idw_samples_var.get()))))
     except (tk.TclError, ValueError):
-        args.idw_grid_m = 0.0
+        args.idw_samples = 0
     args.tractor_speed_kmh = TRACTOR_SPEED_KMH[tractor_speed_var.get()]
     args.speed_factor = SIM_SPEED_VALUES[sim_speed_var.get()]
     return args

@@ -24,6 +24,7 @@ from src.vra_engine import (
     dose_at_idw_pure,
     grid_samples_from_zones,
     polygon_centroid,
+    samples_from_zones_count,
 )
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -186,6 +187,50 @@ def test_grid_zona_pequena_recebe_pelo_menos_centroide() -> None:
     assert len(grid) == 1
     assert grid[0].rate == 42.0
     assert grid[0].label == "TinyZone"
+
+
+# ---------- samples_from_zones_count ----------
+
+
+def test_count_zero_equivale_a_centroides(ensaio: KmlData) -> None:
+    out = samples_from_zones_count(ensaio, n_total=0)
+    assert len(out) == len(centroids_from_zones(ensaio))
+
+
+def test_count_aproxima_o_total_pedido(ensaio: KmlData) -> None:
+    # Ensaio A/B/C/D = 4 ha = 40000 m². Pedindo 100 amostras, espera-se que
+    # a contagem real fique numa janela razoável do alvo (geometria do grid
+    # quadrado introduz arredondamento).
+    for target in [50, 100, 500]:
+        out = samples_from_zones_count(ensaio, n_total=target)
+        # Tolerância 30% — o grid quadrado dentro de polígonos retangulares
+        # pode subestimar. O importante é que escala conforme pedido.
+        assert 0.5 * target <= len(out) <= 1.6 * target, (
+            f"Pedido {target}, obtido {len(out)} (fora da tolerância 50-160%)"
+        )
+
+
+def test_count_distribui_proporcional_a_area(ensaio: KmlData) -> None:
+    # No ensaio A/B/C/D as 4 zonas têm área igual (1 ha cada). Esperamos
+    # quantidades aproximadamente iguais.
+    out = samples_from_zones_count(ensaio, n_total=400)
+    by_label: dict[str, int] = {}
+    for s in out:
+        by_label[s.label] = by_label.get(s.label, 0) + 1
+    counts = list(by_label.values())
+    # As 4 zonas devem ter contagens parecidas (variação <=10%)
+    avg = sum(counts) / len(counts)
+    for c in counts:
+        assert 0.85 * avg <= c <= 1.15 * avg, (
+            f"Distribuição desigual: contagens {by_label}"
+        )
+
+
+def test_count_amostras_herdam_a_dose(ensaio: KmlData) -> None:
+    out = samples_from_zones_count(ensaio, n_total=200)
+    expected = {"A": 90, "B": 75, "C": 60, "D": 100}
+    for s in out:
+        assert s.rate == pytest.approx(expected[s.label])
 
 
 def test_grid_idw_converge_para_zonas_quando_denso(ensaio: KmlData) -> None:

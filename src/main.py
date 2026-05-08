@@ -26,6 +26,7 @@ from .vra_engine import (
     dose_at,
     dose_at_idw_pure,
     grid_samples_from_zones,
+    samples_from_zones_count,
 )
 
 
@@ -137,16 +138,25 @@ def parse_args() -> argparse.Namespace:
         "rate. Ignored when --method=zones.",
     )
     p.add_argument(
+        "--idw-samples",
+        type=int,
+        default=0,
+        help="Approximate total number of IDW samples, distributed across "
+        "all inclusion polygons proportionally to area (each zone gets ~ "
+        "n × zone_area / total_area samples). 0 (default) = use only one "
+        "centroid per zone (sparse). Higher values mimic a real GIS soil-"
+        "sampling campaign (e.g., 50 = sparse field survey; 500 = dense "
+        "research-grade sampling). Each sample inherits the zone's rate. "
+        "Ignored when --method=zones. Takes precedence over --idw-grid-m.",
+    )
+    p.add_argument(
         "--idw-grid-m",
         type=float,
         default=0.0,
-        help="Grid spacing (m) for densifying samples within each zone. "
-        "0 (default) = use only one centroid per zone (sparse, the case "
-        "that produces big bull's-eyes with low N). Positive values (e.g. "
-        "20, 10, 5) sample a grid of points inside each polygon labeled "
-        "with the zone's rate, mimicking a real GIS soil-sampling campaign. "
-        "With smaller spacing, IDW converges visually toward the zones "
-        "method itself. Ignored when --method=zones.",
+        help="(Advanced) Grid spacing in meters for densifying samples "
+        "within each zone. Alternative to --idw-samples for users who want "
+        "exact spacing control. 0 (default) = inactive. Ignored when "
+        "--idw-samples > 0 or --method=zones.",
     )
     p.add_argument(
         "--tractor-speed-kmh",
@@ -359,7 +369,10 @@ def main() -> None:
     # 'zones' usa a hierarquia padrão; 'idw' usa apenas amostras (centroides
     # dos polígonos de inclusão) com o N escolhido pelo usuário.
     if args.method == "idw":
-        if args.idw_grid_m > 0:
+        # --idw-samples (didático) tem precedência sobre --idw-grid-m (avançado).
+        if args.idw_samples > 0:
+            idw_samples = samples_from_zones_count(kml, args.idw_samples)
+        elif args.idw_grid_m > 0:
             idw_samples = grid_samples_from_zones(kml, args.idw_grid_m)
         else:
             idw_samples = centroids_from_zones(kml)
@@ -375,7 +388,12 @@ def main() -> None:
         def dose_fn(x: float, y: float) -> float:
             return dose_at_idw_pure(x, y, idw_samples, idw_params)
 
-        if args.idw_grid_m > 0:
+        if args.idw_samples > 0:
+            method_label = (
+                f"IDW (N={args.idw_power:g}, "
+                f"{len(idw_samples)} amostras alvo {args.idw_samples})"
+            )
+        elif args.idw_grid_m > 0:
             method_label = (
                 f"IDW (N={args.idw_power:g}, grid={args.idw_grid_m:g} m, "
                 f"{len(idw_samples)} amostras)"
@@ -395,7 +413,11 @@ def main() -> None:
     # consecutivas sobrescrevam snapshots/CSV uns dos outros — facilita a
     # comparação posterior na tese.
     if args.method == "idw":
-        if args.idw_grid_m > 0:
+        if args.idw_samples > 0:
+            method_subdir = (
+                f"idw_p{args.idw_power:g}_n{args.idw_samples}".replace(".", "_")
+            )
+        elif args.idw_grid_m > 0:
             method_subdir = (
                 f"idw_p{args.idw_power:g}_grid{args.idw_grid_m:g}m".replace(".", "_")
             )
