@@ -12,12 +12,11 @@ import math
 import sys
 from pathlib import Path
 
-from .coverage_report import polygon_area_m2
 from .i18n import t
-from .kml_parser import KmlData, parse_kml
+from .kml_parser import parse_kml
 from .launcher import run_launcher, should_show_launcher
 from .terrain import GaussianBump, default_params
-from .tractor_sim import boustrophedon, should_use_headland, uniform_random
+from .tractor_sim import boustrophedon, should_use_headland
 from .visualization import run
 from .vra_engine import (
     DEFAULT_IDW_RADIUS_M,
@@ -26,6 +25,7 @@ from .vra_engine import (
     dose_at,
     dose_at_idw_pure,
     grid_samples_from_zones,
+    point_in_polygon,
     samples_from_zones_count,
 )
 
@@ -104,11 +104,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--mode",
-        choices=["boustrophedon", "random"],
+        choices=["boustrophedon"],
         default="boustrophedon",
         help="Trajectory style. 'boustrophedon' (default): back-and-forth strips "
-        "with U-turns and optional headland pass; 'random': random GPS points, "
-        "useful only for visualizing IDW interpolation (no meaningful report).",
+        "with U-turns and optional headland pass.",
     )
     p.add_argument(
         "--method",
@@ -194,6 +193,17 @@ def parse_args() -> argparse.Namespace:
         "each side -> 20. Default: 20.0.",
     )
     p.add_argument(
+        "--strip-overlap",
+        type=float,
+        default=0.0,
+        help="Fraction of overlap between adjacent boustrophedon strips "
+        "(0.0 to 0.5). 0.0 (default) = strips adjacent without overlap. "
+        "Higher values (e.g. 0.10) eliminate small gaps from irregular field "
+        "edges and GNSS drift, at the cost of double-counting some area in "
+        "the per-zone applied mass. The actual swath width (--width-m) is "
+        "unchanged; only the spacing between strips.",
+    )
+    p.add_argument(
         "--cell-m",
         type=float,
         default=1.5,
@@ -241,38 +251,6 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def _print_kml_summary(kml: KmlData, lang: str, width_m: float) -> None:
-    """Imprime sumário das features do KML antes de iniciar a simulação."""
-    print(t(lang, "summary_title"))
-    if kml.field_polygon is not None:
-        area_ha = polygon_area_m2(kml.field_polygon.coords_xy) / 10_000.0
-        info = t(lang, "summary_field_fmt").format(
-            vertices=len(kml.field_polygon.coords_xy), area_ha=area_ha
-        )
-        print(f"  {t(lang, 'summary_field')}: {info}")
-    else:
-        print(f"  {t(lang, 'summary_field')}: {t(lang, 'summary_field_none')}")
-
-    inclusions = [z for z in kml.zones if z.rate > 0]
-    exclusions = [z for z in kml.zones if z.rate == 0]
-    inc_desc = ", ".join(f"{z.label}={z.rate:g}" for z in inclusions) or "—"
-    exc_desc = ", ".join(z.label for z in exclusions) or "—"
-    print(f"  {t(lang, 'summary_inclusion')} ({len(inclusions)}): {inc_desc}")
-    print(f"  {t(lang, 'summary_exclusion')} ({len(exclusions)}): {exc_desc}")
-    print(f"  {t(lang, 'summary_circles')}: {len(kml.circles)}")
-    print(f"  {t(lang, 'summary_samples')}: {len(kml.samples)}")
-
-    bbox = kml.bbox()
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    n_strips = max(1, int(h / max(width_m, 1e-6)))
-    print(
-        f"  {t(lang, 'summary_bbox')}: {w:.0f} x {h:.0f} m  "
-        f"(~{n_strips} {t(lang, 'summary_strips')})"
-    )
-    print()
-
-
 def main() -> None:
     args = parse_args()
 
@@ -303,19 +281,6 @@ def main() -> None:
     kml = parse_kml(args.kml)
     bbox = kml.bbox()
 
-    _print_kml_summary(kml, args.lang, args.width_m)
-    if args.method == "idw":
-        n_centroids = sum(1 for z in kml.zones if z.rate > 0)
-        print(
-            f"  Método: IDW puro  |  N (potência) = {args.idw_power:g}  |  "
-            f"raio = {args.idw_radius_m:g} m  |  "
-            f"{n_centroids} amostra(s) em centroides de polígonos"
-        )
-        print()
-    else:
-        print("  Método: Zonas de Manejo (hierárquico)")
-        print()
-
     terrain = default_params(bbox)
     terrain.a = args.decline_x
     terrain.b = args.decline_y
@@ -335,39 +300,55 @@ def main() -> None:
         terrain.bumps = []
 
     field_coords = kml.field_polygon.coords_xy if kml.field_polygon else None
-    # No modo IDW puro, o trator percorre toda a área do bbox sem máscara de
-    # exclusão (passa por sede, lago, pedras) — evidencia o desperdício/risco
-    # que as zonas de exclusão evitam.
-    if args.method == "idw":
-        exclusion_polys: list[list[tuple[float, float]]] = []
-        exclusion_circs: list[tuple[float, float, float]] = []
-    else:
-        exclusion_polys = [z.coords_xy for z in kml.zones if z.rate == 0]
-        exclusion_circs = [(c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0]
+    # Trajetória do trator independe do método de prescrição: na realidade
+    # física, o trator desvia da sede, do lago e das pedras seja qual for o
+    # algoritmo de cálculo de dose. A diferença entre Zonas e IDW está
+    # somente na DOSE aplicada ao longo da mesma trajetória — não no
+    # planejamento do caminho.
+    exclusion_polys: list[list[tuple[float, float]]] = [
+        z.coords_xy for z in kml.zones if z.rate == 0
+    ]
+    exclusion_circs: list[tuple[float, float, float]] = [
+        (c.x, c.y, c.radius_m) for c in kml.circles if c.rate == 0
+    ]
 
     if args.headland == "auto":
         headland = should_use_headland(field_coords)
     else:
         headland = args.headland == "on"
 
-    if args.mode == "random":
-        samples = uniform_random(bbox)
-    else:
-        samples = boustrophedon(
-            bbox,
-            terrain,
-            width_m=args.width_m,
-            gnss_noise_m=args.gnss_noise_m,
-            paint_offset_back_m=args.paint_offset_back_m,
-            field_polygon=field_coords,
-            exclusion_polygons=exclusion_polys,
-            exclusion_circles=exclusion_circs,
-            headland=headland,
-        )
+    samples = boustrophedon(
+        bbox,
+        terrain,
+        width_m=args.width_m,
+        gnss_noise_m=args.gnss_noise_m,
+        paint_offset_back_m=args.paint_offset_back_m,
+        field_polygon=field_coords,
+        exclusion_polygons=exclusion_polys,
+        exclusion_circles=exclusion_circs,
+        headland=headland,
+        strip_overlap=args.strip_overlap,
+    )
 
     # Função de dose injetada na visualização e no acumulador de cobertura.
     # 'zones' usa a hierarquia padrão; 'idw' usa apenas amostras (centroides
     # dos polígonos de inclusão) com o N escolhido pelo usuário.
+    # `clip_polys` define a "área demarcada" — onde aplicação faz sentido.
+    # Quando há `Field` no KML, é o talhão. Quando não há (ex.: ABCD), é a
+    # união das zonas de inclusão. Em ambos os métodos, dose=0 fora dessa
+    # área (independente do método de interpolação).
+    # Polígonos da "área demarcada" (sem tolerância — clip estrito). Quando
+    # há `Field` no KML, é o talhão. Quando não há (ex.: ABCD), é a união
+    # das zonas de inclusão.
+    clip_polys: list[list[tuple[float, float]]] = (
+        [kml.field_polygon.coords_xy]
+        if kml.field_polygon
+        else [z.coords_xy for z in kml.zones if z.rate > 0]
+    )
+
+    def _inside_clip(x: float, y: float) -> bool:
+        return any(point_in_polygon(x, y, p) for p in clip_polys)
+
     if args.method == "idw":
         # --idw-samples (didático) tem precedência sobre --idw-grid-m (avançado).
         if args.idw_samples > 0:
@@ -390,6 +371,11 @@ def main() -> None:
         idw_params = IdwParams(power=args.idw_power, radius_m=eff_radius)
 
         def dose_fn(x: float, y: float) -> float:
+            # Clip rígido pela área demarcada: fora do talhão (ou da união
+            # das zonas, no ABCD) o operador desliga a aplicação. IDW puro
+            # não pode "vazar" cor para fora dessa área.
+            if not _inside_clip(x, y):
+                return 0.0
             return dose_at_idw_pure(x, y, idw_samples, idw_params)
 
         # Composição das amostras: N da zona (centroides ou grid) + M externas.
@@ -416,11 +402,20 @@ def main() -> None:
         idw_params = IdwParams()
 
         def dose_fn(x: float, y: float) -> float:
+            # Clip rígido pela área demarcada também no modo Zonas — quando
+            # não há `Field` no KML (ABCD), dose_at usa só a hierarquia de
+            # polígonos e devolve 0 fora de qualquer zona; o clip explícito
+            # apenas reforça e mantém simetria com o modo IDW.
+            if not _inside_clip(x, y):
+                return 0.0
             return dose_at(x, y, kml)
 
         # Para zonas, "amostras utilizadas" = centroides das zonas com rate>0
-        # + amostras IDW externas (usadas como fallback na hierarquia).
-        n_zone = sum(1 for z in kml.zones if z.rate > 0)
+        # (aplicando o filtro de marca interna) + amostras IDW externas
+        # (usadas como fallback na hierarquia). Mantém a contagem coerente
+        # com o modo IDW: zonas que têm marca dentro não entram como
+        # centroide.
+        n_zone = len(centroids_from_zones(kml))
         n_external = len(kml.samples)
         method_label = (
             f"Zonas | {n_zone} centroides + {n_external} externas "
@@ -428,8 +423,9 @@ def main() -> None:
         )
 
     # Saída em subpasta por método (e por N quando IDW), evitando que rodadas
-    # consecutivas sobrescrevam snapshots/CSV uns dos outros — facilita a
-    # comparação posterior na tese.
+    # consecutivas sobrescrevam snapshots uns dos outros — facilita a
+    # comparação posterior na tese. CSV usa nome com data+hora+KML, então
+    # múltiplas rodadas no mesmo método não se sobrescrevem.
     if args.method == "idw":
         if args.idw_samples > 0:
             method_subdir = (
@@ -443,7 +439,7 @@ def main() -> None:
             method_subdir = f"idw_p{args.idw_power:g}_centroides".replace(".", "_")
     else:
         method_subdir = "zones"
-    docs_dir = args.docs_dir / method_subdir
+    docs_dir = args.docs_dir / "simulator-reports" / method_subdir
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     report = run(
@@ -467,12 +463,26 @@ def main() -> None:
     )
 
     print()
-    print(t(args.lang, "report_console_title"))
-    print(f"  {method_label}")
     print(report.render_console())
-    print(f"\n{t(args.lang, 'report_note')}")
-    csv_path = docs_dir / "relatorio_erro.csv"
-    report.write_csv(csv_path)
+    # Nome do CSV: report-YYYY-MM-DD-HHMM-<kml-stem>.csv para nunca
+    # sobrescrever rodadas anteriores. Espaços do nome do KML viram
+    # underscore para evitar problemas em shells/explorers.
+    from datetime import datetime  # noqa: PLC0415 (uso pontual)
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M")
+    kml_stem = Path(args.kml).stem.replace(" ", "_")
+    csv_path = docs_dir / f"report-{timestamp}-{kml_stem}.csv"
+    # Parâmetros do teste, escritos no header do CSV, com chaves
+    # traduzidas conforme args.lang (mesma mensagem que o usuário vê
+    # na tela e no terminal).
+    params = {
+        t(args.lang, "report_param_date"): timestamp,
+        t(args.lang, "report_param_kml"): Path(args.kml).name,
+        t(args.lang, "report_param_method"): method_label,
+        t(args.lang, "report_param_width"): f"{args.width_m:g} m",
+        t(args.lang, "report_param_noise"): f"{args.gnss_noise_m:g} m",
+        t(args.lang, "report_param_lang"): args.lang.upper(),
+    }
+    report.write_csv(csv_path, params=params)
     print(f"\n{t(args.lang, 'report_saved')}: {csv_path}")
 
 

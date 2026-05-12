@@ -167,6 +167,20 @@ def _classify_name(name: str) -> tuple[str, dict[str, float | str]] | None:
         return None
 
 
+def _point_in_polygon(x: float, y: float, poly: list[tuple[float, float]]) -> bool:
+    """Ray casting standalone para evitar import de vra_engine (cycle)."""
+    n = len(poly)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-30) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
 def parse_kml(path: str | Path) -> KmlData:
     """Lê KML e devolve KmlData com coordenadas projetadas em metros."""
     path = Path(path)
@@ -263,6 +277,17 @@ def parse_kml(path: str | Path) -> KmlData:
                         y=y,
                     )
                 )
+
+    # Filtra amostras (Placemarks de Point com taxa) que caem dentro de
+    # qualquer polígono de zona — inclusão ou exclusão. Esses pontos são
+    # apenas marcas visuais do Google Earth (ex.: "120" colocado dentro
+    # da zona Poor para o autor enxergar a dose) e não representam dados
+    # de amostragem real. Mantê-los como amostras IDW polui o mapa e
+    # cria pontos duplicados próximos do centroide gerado pela zona.
+    samples = [
+        s for s in samples
+        if not any(_point_in_polygon(s.x, s.y, z.coords_xy) for z in zones)
+    ]
 
     return KmlData(
         field_polygon=field_poly,

@@ -2,49 +2,49 @@
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
   <name>Ensaio integrado A/B/C/D — Tab. 6 cap 7</name>
-  <description>Quatro zonas adjacentes 100×100 m (1 ha cada), doses do ensaio reportado no §7.3.</description>
+  <description>Quatro zonas adjacentes 100×100 m (1 ha cada), doses do ensaio reportado no §7.3. Coordenadas calibradas para a projeção equiretangular local com R=6371000 m, origem (-22.499099, -47.500000): cada delta de lat/lon projeta exatamente 100 m com erro &lt; 3 mm, dando 0.99996 ha por zona (arredonda 1.00 ha).</description>
 
   <Placemark>
     <name>A=90</name>
     <Polygon><outerBoundaryIs><LinearRing><coordinates>
-      -47.500000,-22.499099,0
-      -47.499025,-22.499099,0
-      -47.499025,-22.498198,0
-      -47.500000,-22.498198,0
-      -47.500000,-22.499099,0
+      -47.5000000,-22.4990990,0
+      -47.4990266,-22.4990990,0
+      -47.4990266,-22.4981997,0
+      -47.5000000,-22.4981997,0
+      -47.5000000,-22.4990990,0
     </coordinates></LinearRing></outerBoundaryIs></Polygon>
   </Placemark>
 
   <Placemark>
     <name>B=75</name>
     <Polygon><outerBoundaryIs><LinearRing><coordinates>
-      -47.499025,-22.499099,0
-      -47.498050,-22.499099,0
-      -47.498050,-22.498198,0
-      -47.499025,-22.498198,0
-      -47.499025,-22.499099,0
+      -47.4990266,-22.4990990,0
+      -47.4980532,-22.4990990,0
+      -47.4980532,-22.4981997,0
+      -47.4990266,-22.4981997,0
+      -47.4990266,-22.4990990,0
     </coordinates></LinearRing></outerBoundaryIs></Polygon>
   </Placemark>
 
   <Placemark>
     <name>C=60</name>
     <Polygon><outerBoundaryIs><LinearRing><coordinates>
-      -47.500000,-22.500000,0
-      -47.499025,-22.500000,0
-      -47.499025,-22.499099,0
-      -47.500000,-22.499099,0
-      -47.500000,-22.500000,0
+      -47.5000000,-22.4999983,0
+      -47.4990266,-22.4999983,0
+      -47.4990266,-22.4990990,0
+      -47.5000000,-22.4990990,0
+      -47.5000000,-22.4999983,0
     </coordinates></LinearRing></outerBoundaryIs></Polygon>
   </Placemark>
 
   <Placemark>
     <name>D=100</name>
     <Polygon><outerBoundaryIs><LinearRing><coordinates>
-      -47.499025,-22.500000,0
-      -47.498050,-22.500000,0
-      -47.498050,-22.499099,0
-      -47.499025,-22.499099,0
-      -47.499025,-22.500000,0
+      -47.4990266,-22.4999983,0
+      -47.4980532,-22.4999983,0
+      -47.4980532,-22.4990990,0
+      -47.4990266,-22.4990990,0
+      -47.4990266,-22.4999983,0
     </coordinates></LinearRing></outerBoundaryIs></Polygon>
   </Placemark>
 

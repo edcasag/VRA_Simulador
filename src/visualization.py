@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator
 
+import numpy as np
+
 # Centraliza a janela do programa na tela (override via env var externa)
 os.environ.setdefault("SDL_VIDEO_CENTERED", "1")
 
@@ -224,7 +226,7 @@ def _draw_idw_grid(
     vp: Viewport,
     colormap: Colormap,
     grid_n: int = 200,
-    field_coords: list[tuple[float, float]] | None = None,
+    clip_polygons: list[list[tuple[float, float]]] | None = None,
 ) -> None:
     """Renderiza o mapa teórico do IDW como grade colorida no painel esquerdo.
 
@@ -240,8 +242,10 @@ def _draw_idw_grid(
     ao tamanho do talhão. O raio configurado pelo usuário continua valendo
     durante a simulação real (deposição do trator).
 
-    Quando `field_coords` é fornecido, células fora do polígono do talhão
-    ficam no cinza de fundo (clipping pelas bordas reais do `Field`).
+    `clip_polygons` define a "área demarcada": células cujo centro fica fora
+    de TODOS os polígonos da lista permanecem no cinza de fundo (não recebem
+    cor IDW). Aceita uma lista para casos como ABCD onde não há `Field` único
+    mas a área demarcada é a união das zonas de inclusão.
     """
     xmin, ymin, xmax, ymax = bbox
     grid_surf = pygame.Surface((grid_n, grid_n))
@@ -262,8 +266,10 @@ def _draw_idw_grid(
         y = ymax - j * dy
         for i in range(grid_n):
             x = xmin + i * dx
-            if field_coords is not None and not point_in_polygon(x, y, field_coords):
-                continue  # fora do talhão: mantém GRAY_BG do fill inicial
+            if clip_polygons and not any(
+                point_in_polygon(x, y, p) for p in clip_polygons
+            ):
+                continue  # fora da área demarcada: mantém GRAY_BG
             d = dose_at_idw_pure(x, y, samples, viz_params)
             grid_surf.set_at((i, j), colormap.color_for_dose_smooth(d))
     # Blita redimensionado na área útil da viewport (respeitando a margem)
@@ -333,28 +339,218 @@ def _draw_idw_sample_markers(
         surf.blit(text, (sx - text.get_width() // 2, sy - text.get_height() // 2))
 
 
+def _is_polygon_convex(poly: list[tuple[float, float]]) -> bool:
+    """True se o polígono é convexo: todos os cross products de arestas
+    consecutivas têm o mesmo sinal. Necessário para o Sutherland-Hodgman
+    funcionar corretamente como clipping (S-H falha em polígonos côncavos
+    no papel de polígono recortador)."""
+    n = len(poly)
+    if n < 4:
+        return True
+    sign = 0
+    for i in range(n):
+        ax, ay = poly[i]
+        bx, by = poly[(i + 1) % n]
+        cx_pt, cy_pt = poly[(i + 2) % n]
+        cross = (bx - ax) * (cy_pt - by) - (by - ay) * (cx_pt - bx)
+        if abs(cross) < 1e-9:
+            continue
+        cur_sign = 1 if cross > 0 else -1
+        if sign == 0:
+            sign = cur_sign
+        elif sign != cur_sign:
+            return False
+    return True
+
+
+def _polygon_signed_area_v(poly: list[tuple[float, float]]) -> float:
+    """Área orientada (shoelace). >0 = CCW, <0 = CW."""
+    n = len(poly)
+    if n < 3:
+        return 0.0
+    a = 0.0
+    for i in range(n):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % n]
+        a += x1 * y2 - x2 * y1
+    return a * 0.5
+
+
+def _sutherland_hodgman_clip(
+    subject: list[tuple[float, float]],
+    clip: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Recorta `subject` contra `clip` (polígono CONVEXO em CCW). Devolve a
+    interseção (lista vazia se não houver). Subject pode ser qualquer
+    polígono simples; a restrição é que `clip` seja convexo (zonas
+    retangulares como ABCD: OK; zonas irregulares mas convexas: OK; zonas
+    não-convexas: pode produzir artefatos pequenos).
+    """
+    if len(subject) < 3 or len(clip) < 3:
+        return []
+    # Garante CCW no clip (cross product positivo significa "esquerda" da
+    # aresta = lado interior do polígono CCW).
+    if _polygon_signed_area_v(clip) < 0:
+        clip = list(reversed(clip))
+    output = list(subject)
+    n_clip = len(clip)
+    for i in range(n_clip):
+        if not output:
+            break
+        cp1 = clip[i]
+        cp2 = clip[(i + 1) % n_clip]
+        edx = cp2[0] - cp1[0]
+        edy = cp2[1] - cp1[1]
+
+        def inside(p: tuple[float, float]) -> bool:
+            return edx * (p[1] - cp1[1]) - edy * (p[0] - cp1[0]) >= 0.0
+
+        def intersect(
+            a: tuple[float, float], b: tuple[float, float]
+        ) -> tuple[float, float]:
+            ax, ay = a
+            bx, by = b
+            x3, y3 = cp1
+            x4, y4 = cp2
+            den = (ax - bx) * (y3 - y4) - (ay - by) * (x3 - x4)
+            if abs(den) < 1e-12:
+                return b
+            t = ((ax - x3) * (y3 - y4) - (ay - y3) * (x3 - x4)) / den
+            return (ax + t * (bx - ax), ay + t * (by - ay))
+
+        input_list = output
+        output = []
+        s = input_list[-1]
+        for e in input_list:
+            if inside(e):
+                if not inside(s):
+                    output.append(intersect(s, e))
+                output.append(e)
+            elif inside(s):
+                output.append(intersect(s, e))
+            s = e
+    return output
+
+
+def _render_correction_to_paint_layer(
+    paint_layer: pygame.Surface,
+    grid,
+    dose_fn,
+    color_for_dose,
+    vp: Viewport,
+) -> int:
+    """Pinta as células marcadas como correção (CoverageGrid.is_correction)
+    no paint_layer, com a cor de dose_fn no centro de cada célula. Operação
+    de uma única vez ao fim da simulação — implementa a ideia de "preencher
+    os pixels brancos com a cor do algoritmo".
+
+    Devolve o número de células renderizadas.
+    """
+    iy_arr, ix_arr = np.where(grid.is_correction)
+    n = len(iy_arr)
+    if n == 0:
+        return 0
+    cell_m = grid.cell_size_m
+    cell_px = max(1, vp.cell_size_px(cell_m))
+    half = cell_px // 2
+    for iy, ix in zip(iy_arr, ix_arr):
+        cx = grid.xmin + (ix + 0.5) * cell_m
+        cy = grid.ymin + (iy + 0.5) * cell_m
+        rate = dose_fn(cx, cy)
+        if rate <= 0:
+            continue
+        color = color_for_dose(rate)
+        sx, sy = vp.world_to_screen(cx, cy)
+        pygame.draw.rect(
+            paint_layer,
+            (*color, 220),
+            (sx - half, sy - half, cell_px, cell_px),
+        )
+    return n
+
+
 def _draw_zone_outlines(surf: pygame.Surface, kml: KmlData, vp: Viewport) -> None:
+    # Mesma paleta usada por _draw_zone_contours_overlay (modo IDW): inclusões
+    # em cinza fino, exclusões em vermelho destacado. Mantém os dois modos
+    # (Zonas e IDW) com a mesma aparência de contorno nos dois painéis.
+    INCL_COLOR = (60, 60, 60)
+    EXCL_COLOR = (220, 50, 50)
     for z in kml.zones:
         pts = [vp.world_to_screen(*p) for p in z.coords_xy]
-        pygame.draw.polygon(surf, (60, 60, 60), pts, 1)
+        if z.rate == 0:
+            pygame.draw.polygon(surf, EXCL_COLOR, pts, 2)
+        else:
+            pygame.draw.polygon(surf, INCL_COLOR, pts, 1)
     if kml.field_polygon:
         pts = [vp.world_to_screen(*p) for p in kml.field_polygon.coords_xy]
-        pygame.draw.polygon(surf, (60, 60, 60), pts, 2)
+        pygame.draw.polygon(surf, INCL_COLOR, pts, 2)
+    # Círculos (cupins, pedras): mesmo contorno do overlay IDW para que o
+    # painel direito mostre as exclusões pontuais que o trator contorna.
+    for c in kml.circles:
+        cx, cy = vp.world_to_screen(c.x, c.y)
+        rpx = max(2, vp.cell_size_px(c.radius_m * 2) // 2)
+        is_excl = c.rate == 0
+        color = EXCL_COLOR if is_excl else INCL_COLOR
+        pygame.draw.circle(surf, color, (cx, cy), rpx, 2 if is_excl else 1)
+
+
+def _draw_zone_contours_overlay(
+    surf: pygame.Surface, kml: KmlData, vp: Viewport, font: pygame.font.Font
+) -> None:
+    """Sobreposição de contornos das zonas no modo IDW.
+
+    Inclusões em cinza fino (referência); exclusões — polígonos e círculos —
+    em vermelho destacado, para evidenciar visualmente onde o IDW (que
+    ignora os limites das zonas) aplica produto indevidamente, distribuindo
+    dose dentro de exclusões (Sede, lago, pedras) que o método de Zonas de
+    Manejo respeita.
+
+    Círculos recebem rótulo da taxa ao lado (mesmo estilo dos marcadores de
+    amostras IDW): exclusões mostram "0", inclusões mostram a dose. Círculos
+    pequenos (raio de poucos pixels) ficariam crípticos sem isso.
+    """
+    INCL_COLOR = (60, 60, 60)
+    EXCL_COLOR = (220, 50, 50)
+    for z in kml.zones:
+        pts = [vp.world_to_screen(*p) for p in z.coords_xy]
+        if z.rate == 0:
+            pygame.draw.polygon(surf, EXCL_COLOR, pts, 2)
+        else:
+            pygame.draw.polygon(surf, INCL_COLOR, pts, 1)
+    for c in kml.circles:
+        cx, cy = vp.world_to_screen(c.x, c.y)
+        rpx = max(2, vp.cell_size_px(c.radius_m * 2) // 2)
+        is_excl = c.rate == 0
+        color = EXCL_COLOR if is_excl else INCL_COLOR
+        pygame.draw.circle(surf, color, (cx, cy), rpx, 2 if is_excl else 1)
+        # Rótulo da taxa ao lado do círculo (mesma estética dos marcadores IDW).
+        text_str = f"{c.label}={int(round(c.rate))}" if c.label else f"{int(round(c.rate))}"
+        text = font.render(text_str, True, color)
+        bg = pygame.Surface(
+            (text.get_width() + 6, text.get_height() + 2), pygame.SRCALPHA
+        )
+        bg.fill((255, 255, 255, 200))
+        offset = rpx + 4
+        surf.blit(bg, (cx + offset, cy - text.get_height() // 2 - 1))
+        surf.blit(text, (cx + offset + 3, cy - text.get_height() // 2))
 
 
 def _draw_zone_labels(
     surf: pygame.Surface, kml: KmlData, vp: Viewport, font: pygame.font.Font
 ) -> None:
-    inclusion_idx = 0
     for z in kml.zones:
         if z.rate <= 0:
             continue
-        inclusion_idx += 1
-        label = z.label or f"Z{inclusion_idx}"
+        # Zona com rótulo definido: mostra "Nome = taxa". Sem rótulo: só
+        # a taxa, sem fallback "Z1/Z2..." (poluiria a figura desnecessariamente).
+        if z.label:
+            text_str = f"{z.label} = {int(z.rate)}"
+        else:
+            text_str = f"{int(z.rate)}"
         cx = sum(p[0] for p in z.coords_xy) / len(z.coords_xy)
         cy = sum(p[1] for p in z.coords_xy) / len(z.coords_xy)
         sx, sy = vp.world_to_screen(cx, cy)
-        text = font.render(f"{label} = {int(z.rate)} kg/ha", True, (0, 0, 0))
+        text = font.render(text_str, True, (0, 0, 0))
         rect = text.get_rect(center=(sx, sy))
         bg = pygame.Surface((rect.width + 6, rect.height + 4), pygame.SRCALPHA)
         bg.fill((255, 255, 255, 200))
@@ -386,20 +582,23 @@ def _draw_legend(
     colormap: Colormap,
     lang: str,
 ) -> None:
-    box_w = 230
-    line_h = 22
-    box_h = line_h * (len(colormap.stops) + 1) + 12
+    # Dimensões reduzidas em ~40% relativas ao tamanho original (230 × 22/linha)
+    # para tampar menos a figura: agora 138 px de largura, 13 px por linha,
+    # quadrado de cor 13×10. A fonte deve vir reduzida (Segoe UI 9 ~ 60%).
+    box_w = 138
+    line_h = 13
+    box_h = line_h * (len(colormap.stops) + 1) + 8
     pygame.draw.rect(surf, (255, 255, 255), (x, y, box_w, box_h))
     pygame.draw.rect(surf, (50, 50, 50), (x, y, box_w, box_h), 1)
     title = font.render(t(lang, "legend_title"), True, (0, 0, 0))
-    surf.blit(title, (x + 8, y + 6))
+    surf.blit(title, (x + 5, y + 4))
     labels = colormap.labels()
     for i, (_rate, color) in enumerate(colormap.stops):
-        yy = y + 10 + line_h * (i + 1)
-        pygame.draw.rect(surf, color, (x + 8, yy, 22, 16))
-        pygame.draw.rect(surf, (50, 50, 50), (x + 8, yy, 22, 16), 1)
+        yy = y + 6 + line_h * (i + 1)
+        pygame.draw.rect(surf, color, (x + 5, yy, 13, 10))
+        pygame.draw.rect(surf, (50, 50, 50), (x + 5, yy, 13, 10), 1)
         text = font.render(labels[i], True, (0, 0, 0))
-        surf.blit(text, (x + 36, yy))
+        surf.blit(text, (x + 22, yy - 1))
 
 
 def _draw_hud(
@@ -408,9 +607,12 @@ def _draw_hud(
     rect: pygame.Rect,
     info: dict[str, str],
 ) -> None:
-    """Painel HUD ancorado no canto superior esquerdo de `rect`."""
-    panel_h = len(info) * 22 + 12
-    panel_w = 220
+    """Painel HUD ancorado no canto superior esquerdo de `rect`. Compacto
+    para não tampar a figura: largura 180 px, linha 18 px (suficiente para
+    a fonte do HUD)."""
+    line_h = 18
+    panel_h = len(info) * line_h + 8
+    panel_w = 180
     panel_x = rect.left + 12
     panel_y = rect.top + 12
     panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
@@ -419,7 +621,7 @@ def _draw_hud(
     surf.blit(panel, (panel_x, panel_y))
     for i, (k, v) in enumerate(info.items()):
         text = font.render(f"{k}: {v}", True, (0, 0, 0))
-        surf.blit(text, (panel_x + 8, panel_y + 6 + i * 22))
+        surf.blit(text, (panel_x + 6, panel_y + 4 + i * line_h))
 
 
 def _format_intro_slides(
@@ -536,8 +738,8 @@ def _draw_speed_hint(
     panel.fill((255, 255, 255, 230))
     pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 1)
     panel.blit(surf, (8, 4))
-    x = left_rect.x + 12
-    y = left_rect.y + 12 + legend_height + 6
+    x = left_rect.x + 4
+    y = left_rect.y + 4 + legend_height + 4
     screen.blit(panel, (x, y))
 
 
@@ -565,14 +767,18 @@ def _draw_report_panel(
     note_font: pygame.font.Font,
     report_lines: list[str],
     lang: str,
+    alpha: int = 180,
 ) -> None:
     """Painel central com o relatório de aplicação por zona ao final da simulação."""
     title_str = t(lang, "report_title")
-    footer_str = t(lang, "report_footer")
+    # Footer em destaque: caixa-alta + preto pleno (big_font já é bold)
+    # para chamar atenção pra próxima ação ao fim da simulação. Inclui
+    # o atalho +/− que ajusta a transparência do painel em tempo real.
+    footer_str = t(lang, "report_footer").upper()
     note_str = t(lang, "report_note")
     line_h = 22
     title = big_font.render(title_str, True, (0, 0, 0))
-    footer = big_font.render(footer_str, True, (60, 60, 60))
+    footer = big_font.render(footer_str, True, (0, 0, 0))
     note = note_font.render(note_str, True, (10, 10, 10))
     rendered_lines = [mono_font.render(ln, True, (0, 0, 0)) for ln in report_lines]
     body_w = max(ln.get_width() for ln in rendered_lines)
@@ -592,12 +798,21 @@ def _draw_report_panel(
     panel_x = (1280 - panel_w) // 2
     panel_y = (720 - panel_h) // 2
     panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
-    panel.fill((255, 255, 245, 240))
+    # Alpha controlado pelo loop principal (default 180, ajustável via
+    # +/− enquanto o relatório está aberto). Permite ao leitor revelar o
+    # mapa pintado por trás da tabela e comparar a forma real aplicada.
+    panel.fill((255, 255, 245, max(60, min(255, alpha))))
     pygame.draw.rect(panel, (50, 50, 50), panel.get_rect(), 2)
     panel.blit(title, ((panel_w - title.get_width()) // 2, 16))
     body_y = 16 + title.get_height() + 16
+    # Centraliza cada linha individualmente: a tabela rich (todas as linhas
+    # com a mesma largura) fica centralizada uniformemente; as linhas mais
+    # largas da legenda — que dimensionam o painel — encostam a 30 px da
+    # borda. Antes a tabela ficava em x=30 fixo e parecia encostada à
+    # esquerda quando a legenda era mais larga que ela.
     for i, ln_surf in enumerate(rendered_lines):
-        panel.blit(ln_surf, (30, body_y + i * line_h))
+        ln_x = (panel_w - ln_surf.get_width()) // 2
+        panel.blit(ln_surf, (ln_x, body_y + i * line_h))
     note_y = body_y + len(rendered_lines) * line_h + 12
     panel.blit(note, ((panel_w - note.get_width()) // 2, note_y))
     panel.blit(
@@ -652,6 +867,10 @@ def run(
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("Segoe UI", 14)
     big_font = pygame.font.SysFont("Segoe UI", 18, bold=True)
+    # Fonte reduzida específica da legenda (Segoe UI 11 bold) para casar com
+    # a redução de 40% das dimensões da caixa. O bold deixa o texto mais
+    # nítido — letras finas em 11 pt antialiased pareciam acinzentadas.
+    legend_font = pygame.font.SysFont("Segoe UI", 11, bold=True)
     mono_font = pygame.font.SysFont("Consolas,Courier New,monospace", 16)
     # Nota do relatório (bold para destacar do corpo da tabela)
     note_font = pygame.font.SysFont("Segoe UI", 16, bold=True)
@@ -677,6 +896,15 @@ def run(
     static_left = pygame.Surface((1280, 720))
     static_left.fill((250, 250, 250))
     pygame.draw.rect(static_left, GRAY_BG, left_rect)
+    # Polígonos que definem a "área demarcada" — onde aplicação faz sentido.
+    # Quando há `Field` no KML, é o talhão. Quando não há (ex.: ABCD), é a
+    # união das zonas de inclusão. Usado para clipar o IDW teórico no painel
+    # esquerdo e (em main.py) para clipar dose_fn em modo IDW puro.
+    clip_polygons: list[list[tuple[float, float]]] = (
+        [kml.field_polygon.coords_xy]
+        if kml.field_polygon
+        else [z.coords_xy for z in kml.zones if z.rate > 0]
+    )
     if method == "idw" and idw_samples:
         # Mapa teórico do IDW: grade colorida com gradiente suave que mostra
         # o efeito olho-de-boi (anéis concêntricos em torno de cada amostra).
@@ -687,28 +915,36 @@ def run(
             idw_params,
             vp_left,
             colormap,
-            field_coords=kml.field_polygon.coords_xy if kml.field_polygon else None,
+            clip_polygons=clip_polygons,
         )
         # Contorno do talhão por referência visual (sem pintar)
         if kml.field_polygon:
             pts = [vp_left.world_to_screen(*p) for p in kml.field_polygon.coords_xy]
             pygame.draw.polygon(static_left, (60, 60, 60), pts, 2)
-        # Marcadores nas amostras (origens das ilhas de cor)
+        # Contorno das zonas: inclusões em cinza fino, exclusões em vermelho.
+        # Evidencia onde o IDW (que ignora limites) aplica produto indevido.
+        _draw_zone_contours_overlay(static_left, kml, vp_left, font)
+        # Marcadores nas amostras (origens das ilhas de cor) — já trazem
+        # o valor de cada amostra, então rótulo da zona seria redundante
+        # e polui especialmente quando o grid é denso.
         _draw_idw_sample_markers(static_left, idw_samples, vp_left, font)
     else:
         _draw_zones_filled(static_left, kml, vp_left, colormap)
         _draw_zone_outlines(static_left, kml, vp_left)
-        _draw_zone_labels(static_left, kml, vp_left, big_font)
-    _draw_legend(static_left, font, left_rect.x + 12, left_rect.y + 12, colormap, lang)
-    # Mesma fórmula de altura usada em _draw_legend (line_h * (n + 1) + 12)
-    legend_height = 22 * (len(colormap.stops) + 1) + 12
+        _draw_zone_labels(static_left, kml, vp_left, legend_font)
+    _draw_legend(static_left, legend_font, left_rect.x + 4, left_rect.y + 4, colormap, lang)
+    # Mesma fórmula de altura usada em _draw_legend (line_h * (n + 1) + 8)
+    legend_height = 13 * (len(colormap.stops) + 1) + 8
 
     # Painel direito (fundo dinâmico): cinza-claro + contornos das zonas (esqueleto)
     static_right = pygame.Surface((640, 720))
     static_right.fill(GRAY_BG)
     # Viewport com origem (0, HEADER_H) — reserva a faixa do cabeçalho
     vp_right_local = Viewport(bbox, pygame.Rect(0, HEADER_H, 640, 720 - HEADER_H))
-    # Contorno claro das zonas (apenas traço, sem preenchimento)
+    # Contorno claro das zonas (apenas traço, sem preenchimento). Sem
+    # rótulos: o painel direito é a pintura aplicada — manter limpo
+    # para visualizar a cobertura, com a referência de nomes só no
+    # painel esquerdo (mapa de aplicação).
     for z in kml.zones:
         pts = [vp_right_local.world_to_screen(*p) for p in z.coords_xy]
         pygame.draw.polygon(static_right, (180, 180, 180), pts, 1)
@@ -737,7 +973,19 @@ def run(
         except (pygame.error, OSError, ImportError):
             tractor_img = None
 
-    report = CoverageReport(kml, width_m=width_m, lang=lang)
+    # bbox passado para habilitar o grid de cobertura: registra cada disco
+    # pintado e devolve cobertura real por zona (sem super-estimativa do
+    # acumulador rectangular).
+    # is_zones_mode habilita o caminho rápido em grid_zone_stats — quando
+    # dose_fn é constante por zona (modo Zonas), mass = N × rate × cell_area
+    # via numpy, sem chamar dose_fn por célula.
+    report = CoverageReport(
+        kml,
+        width_m=width_m,
+        lang=lang,
+        bbox=bbox,
+        is_zones_mode=(method == "zones"),
+    )
     docs_dir = Path(docs_dir)
     docs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -753,6 +1001,24 @@ def run(
 
     paint_step_m = max(0.5, cell_m)  # profundidade longitudinal do retângulo de pintura
 
+    # Pré-ordena zonas de inclusão por área decrescente para o clip por
+    # polígono em _paint_swath: maior primeiro (zona-fundo), menor por
+    # cima (zona específica vence — mesma regra de dose_at).
+    inclusion_zones_by_area_desc = sorted(
+        [z for z in kml.zones if z.rate > 0],
+        key=lambda z: -z.area_m2,
+    )
+    # Sutherland-Hodgman só funciona com polígono recortador CONVEXO.
+    # Se alguma zona é côncava (caso típico do Sítio Palmar com zonas
+    # desenhadas à mão no Google Earth), desliga o clip per-zone e cai
+    # no fallback de pintar o retângulo inteiro com a dose do centro
+    # — comportamento de antes do clip per-zone, mas livre de artefatos
+    # do S-H em côncavos.
+    use_per_zone_clip = bool(inclusion_zones_by_area_desc) and all(
+        _is_polygon_convex(z.coords_xy)
+        for z in inclusion_zones_by_area_desc
+    )
+
     # Modo IDW: a taxa varia continuamente, então a cor de cada retângulo
     # pintado é interpolada (gradiente suave). Modo Zonas: cada zona tem dose
     # discreta, mantém o snap para um stop (cores nítidas, uma por zona).
@@ -761,11 +1027,22 @@ def run(
     )
 
     def _paint_swath(s: TractorSample) -> tuple[float, float]:
-        """Pinta um retângulo de paint_step_m (longitudinal) × width_m (perpendicular)
-        deslocado paint_offset_back_m atrás do trator (eixo do distribuidor de discos),
-        orientado pelo heading. Devolve as coordenadas do centro da pintura."""
+        """Pinta o retângulo do swath (paint_step_m longitudinal × width_m
+        perpendicular, deslocado paint_offset_back_m atrás do trator),
+        recortando por cada zona de inclusão (Sutherland-Hodgman): cada
+        pedaço do retângulo dentro de uma zona é pintado com a taxa daquela
+        zona. Elimina o "vazamento" da cor para fora do polígono e o smear
+        nas transições entre zonas vizinhas.
+
+        Devolve o centro do swath (cx, cy) — usado pelo report.update()
+        para localizar a aplicação.
+        """
         if s.heading is None:
+            # Sem heading (modo random/teste): pinta um quadradinho fixo
+            # sem recorte de zona. Mantém compatibilidade com casos antigos.
             d = dose_fn(s.x, s.y)
+            if d <= 0:
+                return s.x, s.y
             color = color_for_dose_local(d)
             sx, sy = vp_right_local.world_to_screen(s.x, s.y)
             sz = vp_right_local.cell_size_px(paint_step_m)
@@ -782,20 +1059,60 @@ def run(
         # Centro da pintura deslocado para trás do trator (no sentido -heading)
         cx = s.x - hx * paint_offset_back_m
         cy = s.y - hy * paint_offset_back_m
-        d = dose_fn(cx, cy)
-        color = color_for_dose_local(d)
         # Vetor perpendicular (rotação 90°)
         perp_x, perp_y = -hy, hx
         hl = paint_step_m / 2.0
         hw = width_m / 2.0
-        corners_world = [
+        rect_world = [
             (cx + hx * hl + perp_x * hw, cy + hy * hl + perp_y * hw),
             (cx - hx * hl + perp_x * hw, cy - hy * hl + perp_y * hw),
             (cx - hx * hl - perp_x * hw, cy - hy * hl - perp_y * hw),
             (cx + hx * hl - perp_x * hw, cy + hy * hl - perp_y * hw),
         ]
-        corners_screen = [vp_right_local.world_to_screen(*p) for p in corners_world]
-        pygame.draw.polygon(paint_layer, (*color, 230), corners_screen)
+        # Para cada zona de inclusão CONVEXA, recorta o retângulo contra o
+        # polígono da zona; o pedaço resultante é pintado com a taxa da
+        # própria zona (cor consistente com a hierarquia dose_at). Iteração
+        # da maior para a menor zona para que zonas pequenas (mais
+        # específicas) sobreponham as zonas-fundo. Se há zonas côncavas no
+        # KML (use_per_zone_clip=False), o loop é pulado e cai direto no
+        # fallback (pintura do rect inteiro com dose ao centro).
+        painted_anything = False
+        if use_per_zone_clip:
+            for z in inclusion_zones_by_area_desc:
+                piece = _sutherland_hodgman_clip(rect_world, z.coords_xy)
+                if len(piece) < 3:
+                    continue
+                # Filtra peças degeneradas (rect só tocando a aresta da
+                # zona, produzindo linha em vez de área). Sem isso o
+                # centroide cairia sobre a fronteira e dose_fn pode oscilar.
+                if abs(_polygon_signed_area_v(piece)) < 0.01:
+                    continue
+                # Centroide do pedaço para query de dose. No modo Zonas
+                # dose_fn cai sobre dose_at(piece_centroid) que respeita
+                # exclusões; no modo IDW cai sobre IDW naquele ponto.
+                cx_p = sum(p[0] for p in piece) / len(piece)
+                cy_p = sum(p[1] for p in piece) / len(piece)
+                d = dose_fn(cx_p, cy_p)
+                if d <= 0:
+                    continue  # exclusão (Sede/pedras) ou fora do clip
+                color = color_for_dose_local(d)
+                piece_screen = [
+                    vp_right_local.world_to_screen(*p) for p in piece
+                ]
+                pygame.draw.polygon(paint_layer, (*color, 230), piece_screen)
+                painted_anything = True
+        # Quando nenhuma zona contém o swath: pinta o rect inteiro com a
+        # dose no centro. Cobre a cabeceira do Sítio Palmar (passando entre
+        # zonas dentro do field, dose vinda do IDW das marcas próximas
+        # via dose_at) e o caso raro de KML sem zonas.
+        if not painted_anything:
+            d = dose_fn(cx, cy)
+            if d > 0:
+                color = color_for_dose_local(d)
+                rect_screen = [
+                    vp_right_local.world_to_screen(*p) for p in rect_world
+                ]
+                pygame.draw.polygon(paint_layer, (*color, 230), rect_screen)
         return cx, cy
 
     running = True
@@ -807,6 +1124,9 @@ def run(
     idx = 0
     report_lines: list[str] | None = None
     show_report = False  # após finished, pressionar ESPAÇO para abrir o painel
+    # Alpha do painel central do relatório (60..255), ajustado em tempo
+    # real via +/− enquanto o relatório está visível. 180 ≈ 70 % opaco.
+    report_alpha = 180
 
     # Estado da introdução (slides exibidos enquanto pausado, antes da simulação).
     # Placeholders nas linhas dos slides são preenchidos com dados do KML atual.
@@ -817,8 +1137,30 @@ def run(
     intro_slide_start_ms = pygame.time.get_ticks() if intro_slides else 0
 
     last_sample: TractorSample | None = None
+    correction_done = False
     while running:
         clock.tick(max_fps)
+
+        # Quando a trajetória termina, executa uma vez a correção virtual:
+        # preenche as células ainda não pintadas dentro de zonas com a cor
+        # do algoritmo (Zones: rate da zona; IDW: IDW interpolada). Sem
+        # movimento de trator — é um passo computacional final que fecha as
+        # falhas de cobertura visíveis no painel direito.
+        if finished and not correction_done:
+            n_corr = report.apply_virtual_correction(dose_fn)
+            if n_corr > 0 and report.coverage_grid is not None:
+                _render_correction_to_paint_layer(
+                    paint_layer,
+                    report.coverage_grid,
+                    dose_fn,
+                    color_for_dose_local,
+                    vp_right_local,
+                )
+            # Pré-computa o relatório enquanto o usuário ainda olha o
+            # painel pintado: assim quando ele apertar espaço o relatório
+            # aparece instantaneamente, sem o gap de ~1 s do cálculo.
+            report.precompute_zone_stats()
+            correction_done = True
 
         if not finished and not paused:
             # Avança amostras proporcional ao speed_factor. Durante curvas em U
@@ -870,8 +1212,17 @@ def run(
                         else:
                             running = False
                     else:
-                        # Relatório já visível: qualquer tecla fecha.
-                        running = False
+                        # Relatório visível: +/− ajusta a transparência
+                        # do painel (passo 30, faixa 60..255). Qualquer
+                        # outra tecla fecha.
+                        if event.key in (
+                            pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS
+                        ):
+                            report_alpha = min(255, report_alpha + 30)
+                        elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                            report_alpha = max(60, report_alpha - 30)
+                        else:
+                            running = False
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_ESCAPE:
@@ -887,9 +1238,15 @@ def run(
         screen.blit(static_left, (0, 0))
         screen.blit(static_right, (640, 0))
         screen.blit(paint_layer, (640, 0))
+        # Contorno das zonas + talhão por cima da pintura, no painel direito.
+        # (Em static_right havia um traço claro 180,180,180 que ficava coberto
+        # pelo paint_layer; este overlay em (60,60,60) recompõe a referência.)
+        _draw_zone_outlines(screen, kml, vp_right)
 
-        # Painel da velocidade da simulação (atual + atalho +/−), abaixo da legenda
-        _draw_speed_hint(screen, font, left_rect, legend_height, speed_factor, lang)
+        # Painel da velocidade da simulação (atual + atalho +/−), abaixo da legenda.
+        # Some quando a simulação termina — atalho perde sentido com o trator parado.
+        if not finished:
+            _draw_speed_hint(screen, font, left_rect, legend_height, speed_factor, lang)
 
         # Trator atual (ícone rotacionado conforme heading; círculo amarelo se sem heading
         # ou sem imagem carregada)
@@ -906,8 +1263,9 @@ def run(
                 pygame.draw.circle(screen, (0, 0, 0), (sx, sy), 6, 2)
                 pygame.draw.circle(screen, (255, 255, 0), (sx, sy), 4)
 
-        # HUD
-        if last_sample is not None:
+        # HUD: some quando a simulação termina para deixar o resultado
+        # pintado limpo (e depois o relatório central com transparência).
+        if last_sample is not None and not finished:
             d = dose_fn(last_sample.x, last_sample.y)
             z = altitude(last_sample.x, last_sample.y, terrain)
             if last_sample.v is not None:
@@ -981,7 +1339,8 @@ def run(
                 if report_lines is None:
                     report_lines = report.render_console().split("\n")
                 _draw_report_panel(
-                    screen, mono_font, big_font, note_font, report_lines, lang
+                    screen, mono_font, big_font, note_font,
+                    report_lines, lang, alpha=report_alpha,
                 )
 
         pygame.display.flip()

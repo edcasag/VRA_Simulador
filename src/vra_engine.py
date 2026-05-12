@@ -139,6 +139,19 @@ def polygon_centroid(coords: list[tuple[float, float]]) -> tuple[float, float]:
     return cx / (6.0 * a), cy / (6.0 * a)
 
 
+def _zone_contains_sample(
+    zone: Polygon, samples: list[SamplePoint]
+) -> bool:
+    """True se alguma amostra externa cai dentro do polígono da zona.
+
+    Usado para evitar duplicação visual: nos KMLs do Google Earth o autor
+    costuma posicionar uma marca interna com a taxa (ex.: ponto "120" dentro
+    do polígono "Poor=120") como rótulo visível da zona. Se essa marca já
+    existe, gerar o centroide adiciona um segundo ponto quase sobreposto.
+    """
+    return any(point_in_polygon(s.x, s.y, zone.coords_xy) for s in samples)
+
+
 def centroids_from_zones(kml: KmlData) -> list[SamplePoint]:
     """Extrai amostras IDW dos polígonos de inclusão do KML.
 
@@ -146,10 +159,17 @@ def centroids_from_zones(kml: KmlData) -> list[SamplePoint]:
     com a taxa do polígono. Polígonos de exclusão (rate=0) NÃO entram — eles
     representam restrições espaciais, não dose. Permite comparar Zonas de
     Manejo × IDW puro sem editar o KML.
+
+    Zonas que já contêm uma amostra externa (Placemark de Point com a taxa,
+    usado pelo autor do KML como rótulo da zona) NÃO recebem centroide: a
+    marca interna já representa a zona, e somar o centroide criaria um
+    segundo ponto quase no mesmo lugar.
     """
     out: list[SamplePoint] = []
     for z in kml.zones:
         if z.rate <= 0:
+            continue
+        if _zone_contains_sample(z, kml.samples):
             continue
         cx, cy = polygon_centroid(z.coords_xy)
         out.append(SamplePoint(label=z.label, rate=z.rate, x=cx, y=cy))
@@ -206,18 +226,34 @@ def grid_samples_from_zones(kml: KmlData, spacing_m: float) -> list[SamplePoint]
         ys = [p[1] for p in z.coords_xy]
         xmin, ymin = min(xs), min(ys)
         xmax, ymax = max(xs), max(ys)
+        # Centraliza o grid no bbox da zona: calcula quantos passos cabem,
+        # mede a largura efetivamente ocupada e empurra o primeiro ponto
+        # por metade da sobra. Antes o grid começava colado em (xmin, ymin)
+        # e a margem direita/superior era sempre maior — visível no ABCD,
+        # onde cada zona é um quadrado regular.
+        def _grid_start(lo: float, hi: float, step: float) -> float:
+            span = hi - lo
+            if span <= 0:
+                return lo
+            n = int(math.floor(span / step)) + 1
+            used = (n - 1) * step
+            return lo + (span - used) / 2.0
+        x0 = _grid_start(xmin, xmax, spacing_m)
+        y0 = _grid_start(ymin, ymax, spacing_m)
         added = 0
-        gy = ymin
-        while gy <= ymax:
-            gx = xmin
-            while gx <= xmax:
+        gy = y0
+        while gy <= ymax + 1e-9:
+            gx = x0
+            while gx <= xmax + 1e-9:
                 if point_in_polygon(gx, gy, z.coords_xy):
                     out.append(SamplePoint(label=z.label, rate=z.rate, x=gx, y=gy))
                     added += 1
                 gx += spacing_m
             gy += spacing_m
-        # Fallback: zonas menores que o passo do grid recebem o centroide.
-        if added == 0:
+        # Fallback: zonas menores que o passo do grid recebem o centroide,
+        # exceto quando já contêm uma marca externa (a marca interna do KML
+        # já representa a zona — ver _zone_contains_sample).
+        if added == 0 and not _zone_contains_sample(z, kml.samples):
             cx, cy = polygon_centroid(z.coords_xy)
             out.append(SamplePoint(label=z.label, rate=z.rate, x=cx, y=cy))
     return out

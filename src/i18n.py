@@ -17,12 +17,18 @@ STRINGS: dict[str, dict[str, Any]] = {
         "press_space_for_report": "Pressione ESPAÇO para ver o relatório",
         "speed_hint": "Velocidade: {speed:.1f}×    +/− ajusta",
         "report_title": "Relatório de aplicação por zona",
-        "report_footer": "Pressione qualquer tecla para fechar",
+        "report_footer": "+/− ajusta transparência   —   pressione qualquer outra tecla para fechar",
         "report_note": (
             "Resultados aproximados. A operação manual real do trator é mais eficiente."
         ),
         "report_console_title": "=== Relatório de aplicação por zona ===",
         "report_saved": "Relatório salvo em",
+        "report_param_date": "Data",
+        "report_param_kml": "Arquivo KML",
+        "report_param_method": "Método",
+        "report_param_width": "Largura de aplicação",
+        "report_param_noise": "Ruído GNSS",
+        "report_param_lang": "Idioma",
         "hud_pos": "Pos (m)",
         "hud_altitude": "Altitude",
         "hud_speed": "Velocidade",
@@ -34,12 +40,40 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_zone": "Zona",
         "tbl_target": "Alvo (kg/ha)",
         "tbl_applied": "Aplicado (kg/ha)",
-        "tbl_error": "Erro %",
+        "tbl_error": "Δ massa %",
         "tbl_planned_kg": "Planejado (kg)",
         "tbl_applied_kg": "Aplicado (kg)",
+        "tbl_correction_kg": "Correção (kg)",
         "tbl_coverage": "Cobertura %",
         "tbl_area": "Área (ha)",
         "tbl_off_zone": "Fora zonas",
+        "tbl_cv_pct": "CV %",
+        "tbl_within_5pct": "±5 %",
+        "tbl_mape_pct": "MAPE %",
+        # Cabeçalhos 2-linhas para a tabela do console (formato
+        # "rótulo\nunidade"); split em \n na render para caber em
+        # menos largura. Os tbl_* acima são mantidos para o CSV.
+        "hdr_zone": "Zona\n",
+        "hdr_target": "Alvo\nkg/ha",
+        "hdr_area": "Área\nha",
+        "hdr_planned": "Planej.\nkg",
+        "hdr_applied": "Aplicado\nkg",
+        "hdr_correction": "Correção\nkg",
+        "hdr_mass_delta": "Δ massa\n%",
+        "hdr_coverage": "Cobert.\n%",
+        "hdr_cv": "CV\n%",
+        "hdr_within": "±5\n%",
+        "hdr_mape": "MAPE\n%",
+        "report_metrics_legend": (
+            "Δ massa %: diferença percentual entre massa total aplicada "
+            "e planejada na zona. + indica sobreaplicação, − subaplicação.\n"
+            "CV %: dispersão das taxas dentro da zona (std/média × 100). "
+            "0 = uniforme.\n"
+            "±5 %: porcentagem de células com taxa dentro de ±5 % da "
+            "desejada. 100 = todas no alvo.\n"
+            "MAPE % (Mean Absolute Percentage Error): desvio percentual "
+            "médio por célula referente à dose desejada."
+        ),
         "summary_title": "=== Sumário do KML ===",
         "summary_field": "Talhão",
         "summary_field_none": "(não informado; bbox usado como limite)",
@@ -79,12 +113,18 @@ STRINGS: dict[str, dict[str, Any]] = {
         "press_space_for_report": "Press SPACE to see the report",
         "speed_hint": "Speed: {speed:.1f}×    +/− adjusts",
         "report_title": "Application report by zone",
-        "report_footer": "Press any key to close",
+        "report_footer": "+/− adjusts transparency   —   press any other key to close",
         "report_note": (
             "Approximate results. Real manual tractor operation is more efficient."
         ),
         "report_console_title": "=== Application report by zone ===",
         "report_saved": "Report saved to",
+        "report_param_date": "Date",
+        "report_param_kml": "KML file",
+        "report_param_method": "Method",
+        "report_param_width": "Application width",
+        "report_param_noise": "GNSS noise",
+        "report_param_lang": "Language",
         "hud_pos": "Pos (m)",
         "hud_altitude": "Altitude",
         "hud_speed": "Speed",
@@ -96,12 +136,39 @@ STRINGS: dict[str, dict[str, Any]] = {
         "tbl_zone": "Zone",
         "tbl_target": "Target (kg/ha)",
         "tbl_applied": "Applied (kg/ha)",
-        "tbl_error": "Error %",
+        "tbl_error": "Δ mass %",
         "tbl_planned_kg": "Planned (kg)",
         "tbl_applied_kg": "Applied (kg)",
+        "tbl_correction_kg": "Correction (kg)",
         "tbl_coverage": "Coverage %",
         "tbl_area": "Area (ha)",
         "tbl_off_zone": "Off-zone",
+        "tbl_cv_pct": "CV %",
+        "tbl_within_5pct": "±5 %",
+        "tbl_mape_pct": "MAPE %",
+        # 2-line headers for console table (split on \n).
+        "hdr_zone": "Zone\n",
+        "hdr_target": "Target\nkg/ha",
+        "hdr_area": "Area\nha",
+        "hdr_planned": "Planned\nkg",
+        "hdr_applied": "Applied\nkg",
+        "hdr_correction": "Correct.\nkg",
+        "hdr_mass_delta": "Δ mass\n%",
+        "hdr_coverage": "Cover.\n%",
+        "hdr_cv": "CV\n%",
+        "hdr_within": "±5\n%",
+        "hdr_mape": "MAPE\n%",
+        "report_metrics_legend": (
+            "Δ mass %: percentage difference between total mass applied "
+            "and planned in the zone. + indicates over-application, "
+            "− under-application.\n"
+            "CV %: dispersion of rates within the zone (std/mean × 100). "
+            "0 = uniform.\n"
+            "±5 %: percentage of cells with rate within ±5 % of "
+            "the desired rate. 100 = all on target.\n"
+            "MAPE % (Mean Absolute Percentage Error): mean % deviation "
+            "per cell from the desired dose."
+        ),
         "summary_title": "=== KML summary ===",
         "summary_field": "Field",
         "summary_field_none": "(not provided; bbox used as boundary)",
